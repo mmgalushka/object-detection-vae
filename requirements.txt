@@ -1,0 +1,12 @@
+PyYAML
+Pillow
+wheel
+build
+twine
+pylint
+yapf
+tqdm
+tensorflow
+pytest
+pytest-cov
+setuptools
