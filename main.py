@@ -13,6 +13,7 @@ subparsers = parser.add_subparsers()
 
 dt.generate(subparsers)
 dt.transform(subparsers)
+dt.train(subparsers)
 
 
 def main():

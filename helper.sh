@@ -69,17 +69,23 @@ action_test(){
 action_generate(){
     source .venv/bin/activate
     python main.py generate ${@}
-}
+} 
 
 action_transform(){
     source .venv/bin/activate
     python main.py transform ${@}
 }
 
+action_train(){
+    source .venv/bin/activate
+    python -c 'import tensorflow as tf; print(tf.__version__)'
+    python main.py train ${@}
+}
+
 action_install(){
     source .venv/bin/activate
-    # pip install ${@}
-    mkdocs serve
+    pip install ${@}
+    # mkdocs serve
 }
 
 action_build(){
@@ -115,6 +121,9 @@ case $1 in
     ;;
     transform)
         action_transform ${@:2}
+    ;;
+    train)
+        action_train ${@:2}
     ;;
     install)
         action_install ${@:2}
