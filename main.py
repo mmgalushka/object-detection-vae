@@ -11,9 +11,17 @@ import deeptrace as dt
 parser = argparse.ArgumentParser(prog='./helper.sh', usage='%(prog)s')
 subparsers = parser.add_subparsers()
 
-dt.generate(subparsers)
-dt.transform(subparsers)
+# --------------------------------------
+# Initializes dataset handling commands
+# --------------------------------------
+dt.dataset(subparsers)
+dt.tfrecords(subparsers)
+
+# --------------------------------------
+# Initializes ML handling commands
+# --------------------------------------
 dt.train(subparsers)
+dt.predict(subparsers)
 
 
 def main():

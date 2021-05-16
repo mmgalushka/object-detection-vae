@@ -38,7 +38,13 @@ action_init(){
 
     python3 -m venv .venv
     source .venv/bin/activate
-    pip3 install -r requirements.txt
+
+    if [[ -f dependencies.txt ]]
+    then
+        pip3 install -r dependencies.txt
+    else
+        pip3 install -r requirements.txt
+    fi
 }
 
 action_test(){
@@ -66,20 +72,24 @@ action_test(){
     pytest --capture=no -p no:warnings ${OPTS[@]}
 }
 
-action_generate(){
+action_dataset(){
     source .venv/bin/activate
-    python main.py generate ${@}
+    python main.py dataset ${@}
 } 
 
-action_transform(){
+action_tfrecords(){
     source .venv/bin/activate
-    python main.py transform ${@}
+    python main.py tfrecords ${@}
 }
 
 action_train(){
     source .venv/bin/activate
-    python -c 'import tensorflow as tf; print(tf.__version__)'
     python main.py train ${@}
+}
+
+action_predict(){
+    source .venv/bin/activate
+    python main.py predict ${@}
 }
 
 action_install(){
@@ -116,14 +126,17 @@ case $1 in
     test)
         action_test ${@:2}
     ;;
-    generate)
-        action_generate ${@:2}
+    dataset)
+        action_dataset ${@:2}
     ;;
-    transform)
-        action_transform ${@:2}
+    tfrecords)
+        action_tfrecords ${@:2}
     ;;
     train)
         action_train ${@:2}
+    ;;
+    predict)
+        action_predict ${@:2}
     ;;
     install)
         action_install ${@:2}

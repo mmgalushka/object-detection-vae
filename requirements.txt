@@ -7,6 +7,8 @@ pylint
 yapf
 tqdm
 tensorflow
+tensorflow-addons
+pandas
 pytest
 pytest-cov
 setuptools
