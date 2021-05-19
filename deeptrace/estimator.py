@@ -1,3 +1,7 @@
+"""
+A module for orchestrating model training and prediction.
+"""
+
 import tensorflow as tf
 
 from tensorflow.keras.callbacks import ModelCheckpoint
@@ -71,14 +75,14 @@ class Estimator:
 
         # train the convolutional autoencoder
 
-        # self.model.summary()
+        self.model.summary()
 
         self.model.fit(
             train_data,
-            steps_per_epoch=108,
+            steps_per_epoch=10,
             epochs=300,
             validation_data=validation_data,
-            validation_steps=33,
+            validation_steps=1,
             workers=4,
             verbose=1,
             callbacks=[checkpoint])
@@ -106,8 +110,14 @@ class Estimator:
 
         coordinates = batch[1][0]
 
-        draw = ImageDraw.Draw(image)
+        draw = ImageDraw.Draw(output)
         for (x, y, w, h) in coordinates:
             bbox = (x, y, x + w, y + h)
             draw.rectangle(bbox, outline='red')
-        image.save('output.jpg', 'JPEG', quality=100, subsampling=0)
+        output.save('output.jpg', 'JPEG', quality=100, subsampling=0)
+
+        draw1 = ImageDraw.Draw(image)
+        for (x, y, w, h) in coordinates:
+            bbox = (x, y, x + w, y + h)
+            draw1.rectangle(bbox, outline='red')
+        image.save('real.jpg', 'JPEG', quality=100, subsampling=0)

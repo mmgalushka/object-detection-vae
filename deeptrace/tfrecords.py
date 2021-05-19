@@ -22,9 +22,15 @@ def _numeric_feature(value):
     return tf.train.Feature(float_list=tf.train.FloatList(value=[value]))
 
 
-def _image_feature(row):
+def _image_feature(input_dir, row):
     """Returns a bytes_list from a string / byte."""
-    image = Image.open('dataset/synthetic/' + row['image'])
+    image_file = pathlib.Path(row['image'])
+    if image_file.is_absolute():
+        fp = image_file
+    else:
+        fp = input_dir / image_file
+
+    image = Image.open(fp)
     array = np.array(image.resize((64, 64)))
     return {
         'image/content':
@@ -92,14 +98,17 @@ def transform_csv_to_tfrecords(dataset_dir: str, tfrecords_dir: str,
         raise FileExistsError(f'Input directory not found at: {input_dir}')
 
     # Creates the output directory, where TFRecords should be stored.
-    output_dir = pathlib.Path(tfrecords_dir)
+    if tfrecords_dir is None:
+        output_dir = input_dir.parent / (input_dir.name + '-tfrecords')
+    else:
+        output_dir = pathlib.Path(tfrecords_dir)
     output_dir.mkdir(exist_ok=True)
 
     # --- Internal function ----------------------------------------------------
     # The function receives a CSV row and converts it into an example.
     def get_example(row):
         feature = {
-            **_image_feature(row),
+            **_image_feature(input_dir, row),
             **_bbox_feature(row)
             # **_segment_feature(row),
             # **_category_feature(row)

@@ -1,9 +1,11 @@
 """
-A module handling user actions. 
+A module for handling user actions. 
 """
 
-from .data import create_generator
-from .ml import create_model, create_estimator
+from .dataset import create_generator
+from .models import create_model
+from .estimator import create_estimator
+from .losses import hungarian_dist
 from .image import IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_CAPACITY, Palette, Background
 from .dataset import DATASET_DIR, DATASET_SIZE, DataFormat, create_csv_dataset
 from .tfrecords import TFRECORDS_DIR, TFRECORDS_SIZE, transform_csv_to_tfrecords
@@ -33,7 +35,6 @@ def dataset(subparsers):
         '-o',
         '--output',
         metavar='DIR',
-        nargs=1,
         type=str,
         default=DATASET_DIR,
         help=f'an output directory (default="{DATASET_DIR}")')
@@ -113,7 +114,6 @@ def tfrecords(subparsers):
         '-i',
         '--input',
         metavar='DIR',
-        nargs=1,
         type=str,
         default=DATASET_DIR,
         help=f'an input directory with source data (default="{DATASET_DIR}")')
@@ -121,10 +121,9 @@ def tfrecords(subparsers):
         '-o',
         '--output',
         metavar='DIR',
-        nargs=1,
         type=str,
-        default=TFRECORDS_DIR,
-        help=f'an output directory for TFRecords (default="{TFRECORDS_DIR}")')
+        default=None,
+        help=f'an output directory for TFRecords (default=None)')
     parser.add_argument(
         '-f',
         '--format',
@@ -152,11 +151,23 @@ def tfrecords(subparsers):
 def train(subparsers):
 
     def run(args):
-        model = create_model()
+
+        input_shape = (64, 64, 3)
+        latent_size = 1024
+
+        losses = {
+            "default_decoder_1": 'mae',
+            "object_localizer_1": hungarian_dist
+        }
+        lossWeights = {"default_decoder_1": 1, "object_localizer_1": 0.01}
+
+        model = create_model(input_shape, latent_size)
+        model.compile(optimizer='adam', loss=losses, loss_weights=lossWeights)
+
         estimator = create_estimator(model)
 
-        train_data = create_generator('dataset/tfrecords/train')
-        validation_data = create_generator('dataset/tfrecords/val')
+        train_data = create_generator('dataset/synthetic-tfrecords/train')
+        validation_data = create_generator('dataset/synthetic-tfrecords/val')
         estimator.train(train_data, validation_data)
 
     # -----------------------------
@@ -175,7 +186,10 @@ def train(subparsers):
 def predict(subparsers):
 
     def run(args):
-        model = create_model()
+        input_shape = (64, 64, 3)
+        latent_size = 1024
+
+        model = create_model(input_shape, latent_size)
         estimator = create_estimator(model)
 
         estimator.predict(args.input)
