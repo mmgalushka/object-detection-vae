@@ -17,6 +17,8 @@ IMAGE_WIDTH = 64
 """A default image width."""
 IMAGE_HEIGHT = 64
 """A default image height."""
+IMAGE_CHANNELS = 3
+"""A default image height."""
 IMAGE_CAPACITY = 2
 """A default number of geometrical shapes per image."""
 

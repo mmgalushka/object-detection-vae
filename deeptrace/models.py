@@ -12,7 +12,8 @@ import tensorflow_addons as tfa
 import numpy as np
 import tensorflow.keras.backend as K
 from tensorflow.keras.layers import (Input, BatchNormalization, Conv2D, Flatten,
-                                     Lambda, Dense, Reshape, Conv2DTranspose)
+                                     Lambda, Dense, Reshape, Conv2DTranspose,
+                                     Concatenate, Activation)
 from tensorflow.keras.losses import binary_crossentropy, mean_absolute_error
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras import Model
@@ -26,14 +27,18 @@ def create_model(input_shape, latent_size):
     sampler = KLSampler(code_size=latent_size, beta=0.01)
 
     localizer = ObjectLocalizer(latent_size)
+    classifier = ObjectClassifier(latent_size)
 
     auto_input = encoder.input
     hidden = encoder(auto_input)
     hidden = sampler(hidden)
     auto_output = decoder(hidden)
     bbox_output = localizer(hidden)
+    label_output = classifier(hidden)
 
-    return Model(auto_input, [auto_output, bbox_output])
+    combine_output = Concatenate(axis=2)([bbox_output, label_output])
+
+    return Model(auto_input, [auto_output, combine_output])
 
 
 class KLSampler(Model):
@@ -141,7 +146,7 @@ class ObjectLocalizer(Model):
 
     def __init__(self, latent_size):
         super().__init__()
-        local_input = Input(shape=(latent_size,), name='local_input')
+        local_input = Input(shape=(latent_size,), name='localizer_input')
         x = Dense(1024, activation='relu')(local_input)
         x = Dense(512, activation='relu')(x)
         x = Dense(128, activation='relu')(x)
@@ -149,3 +154,20 @@ class ObjectLocalizer(Model):
         local_output = Reshape((2, 4))(x)
 
         super().__init__(local_input, local_output)
+
+
+class ObjectClassifier(Model):
+
+    def __init__(self, latent_size):
+        super().__init__()
+
+        class_input = Input(shape=(latent_size,), name='classifier_input')
+        x = Dense(1024, activation='relu')(class_input)
+        x = Dense(512, activation='relu')(x)
+        x = Dense(128, activation='relu')(x)
+        x = Dense(4)(x)
+        class_output = Reshape((2, 2))(x)
+
+        class_output = tf.keras.activations.softmax(class_output)
+
+        super().__init__(class_input, class_output)

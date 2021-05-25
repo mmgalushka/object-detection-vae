@@ -2,13 +2,13 @@
 A module for handling user actions. 
 """
 
-from .dataset import create_generator
+from .tfrecords import create_generator
 from .models import create_model
 from .estimator import create_estimator
-from .losses import hungarian_dist
-from .image import IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_CAPACITY, Palette, Background
+from .losses import hungarian_dist, total_dist
+from .image import IMAGE_CHANNELS, IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_CAPACITY, Palette, Background
 from .dataset import DATASET_DIR, DATASET_SIZE, DataFormat, create_csv_dataset
-from .tfrecords import TFRECORDS_DIR, TFRECORDS_SIZE, transform_csv_to_tfrecords
+from .tfrecords import TFRECORDS_CAPACITY, create_tfrecords
 
 
 def dataset(subparsers):
@@ -98,10 +98,14 @@ def dataset(subparsers):
 def tfrecords(subparsers):
 
     def run(args):
-        transform_csv_to_tfrecords(
+        create_tfrecords(
             dataset_dir=args.input,
+            dataset_format=args.format,
             tfrecords_dir=args.output,
-            tfrecords_size=args.size,
+            tfrecords_capacity=args.capacity,
+            image_width=args.image_width,
+            image_height=args.image_height,
+            image_channels=args.image_channels,
             verbose=args.verbose)
 
     # ---------------------------------
@@ -110,6 +114,7 @@ def tfrecords(subparsers):
     parser = subparsers.add_parser('tfrecords')
     parser.set_defaults(func=run)
 
+    # --- input options ---------------
     parser.add_argument(
         '-i',
         '--input',
@@ -118,6 +123,15 @@ def tfrecords(subparsers):
         default=DATASET_DIR,
         help=f'an input directory with source data (default="{DATASET_DIR}")')
     parser.add_argument(
+        '-f',
+        '--format',
+        choices=DataFormat.values(),
+        type=str,
+        default=DataFormat.default(),
+        help=f'a format of source dataset (default="{DataFormat.default()}")')
+
+    # --- output options --------------
+    parser.add_argument(
         '-o',
         '--output',
         metavar='DIR',
@@ -125,20 +139,33 @@ def tfrecords(subparsers):
         default=None,
         help=f'an output directory for TFRecords (default=None)')
     parser.add_argument(
-        '-f',
-        '--format',
-        choices=DataFormat.values(),
-        type=str,
-        default=DataFormat.default(),
-        help=f'a format of source dataset (default="{DataFormat.default()}")')
-    parser.add_argument(
-        '-s',
-        '--size',
+        '-c',
+        '--capacity',
         metavar='NUMBER',
-        nargs=1,
         type=int,
-        default=TFRECORDS_SIZE,
-        help=f'a number of records per partion (default="{TFRECORDS_SIZE}")')
+        default=TFRECORDS_CAPACITY,
+        help=f'a number of records per partion (default="{TFRECORDS_CAPACITY}")'
+    )
+
+    # --- image options ---------------
+    parser.add_argument(
+        '--image-width',
+        metavar='PIXELS',
+        type=int,
+        default=IMAGE_WIDTH,
+        help=f'a recording image width (default={IMAGE_WIDTH})')
+    parser.add_argument(
+        '--image-height',
+        metavar='PIXELS',
+        type=int,
+        default=IMAGE_HEIGHT,
+        help=f'a recording image height (default={IMAGE_HEIGHT})')
+    parser.add_argument(
+        '--image-channels',
+        metavar='NUMBER',
+        type=int,
+        default=IMAGE_CHANNELS,
+        help=f'a recording image channels (default={IMAGE_CHANNELS})')
 
     # --- system options --------------
     parser.add_argument(
@@ -155,13 +182,11 @@ def train(subparsers):
         input_shape = (64, 64, 3)
         latent_size = 1024
 
-        losses = {
-            "default_decoder_1": 'mae',
-            "object_localizer_1": hungarian_dist
-        }
-        lossWeights = {"default_decoder_1": 1, "object_localizer_1": 0.01}
+        losses = {"default_decoder_1": 'mae', "concatenate": total_dist}
+        lossWeights = {"default_decoder_1": 1, "concatenate": 0.01}
 
         model = create_model(input_shape, latent_size)
+
         model.compile(optimizer='adam', loss=losses, loss_weights=lossWeights)
 
         estimator = create_estimator(model)

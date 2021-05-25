@@ -3,18 +3,18 @@ A module for orchestrating model training and prediction.
 """
 
 import tensorflow as tf
+from tensorflow.keras import callbacks
 
 from tensorflow.keras.callbacks import ModelCheckpoint
-from tensorflow.keras.callbacks import ReduceLROnPlateau
-from tensorflow.keras.callbacks import EarlyStopping
 
 import numpy as np
 import PIL.Image as Image
 import PIL.ImageDraw as ImageDraw
+import PIL.ImageFont as ImageFont
 import math
 
-tf.compat.v1.disable_eager_execution()
-# tf.compat.v1.enable_eager_execution()
+# gpus = tf.config.experimental.list_physical_devices('GPU')
+# tf.config.experimental.set_memory_growth(gpus[0], True)
 
 
 def create_estimator(model):
@@ -34,66 +34,17 @@ class Estimator:
             mode='min',
             verbose=1)
 
-        reduce_lr = ReduceLROnPlateau(
-            monitor='val_loss',
-            factor=0.1,
-            patience=3,
-            verbose=0,
-            mode='auto',
-            min_delta=0.0001,
-            cooldown=0,
-            min_lr=0)
-
-        # Define configuration parameters
-        start_lr = 0.001
-        exp_decay = 0.1
-
-        # Define the scheduling function
-        def schedule(epoch):
-
-            def lr(epoch, start_lr, exp_decay):
-                if epoch > 25:
-                    return start_lr * math.exp(-exp_decay * epoch)
-                return 0.001
-
-            return 1.0 * lr(epoch, start_lr, exp_decay)
-
-        lr_callback = tf.keras.callbacks.LearningRateScheduler(
-            schedule, verbose=True)
-
-        early_stop = EarlyStopping(patience=10)
-
-        # self.model.fit(
-        #     train_data,
-        #     steps_per_epoch=None,
-        #     epochs=300,
-        #     validation_data=validation_data,
-        #     validation_steps=None,
-        #     workers=4,
-        #     verbose=1,
-        #     callbacks=[reduce_lr, early_stop])
-
-        # train the convolutional autoencoder
-
         self.model.summary()
 
         self.model.fit(
             train_data,
-            steps_per_epoch=10,
+            steps_per_epoch=int(7000 / 64),
             epochs=300,
             validation_data=validation_data,
-            validation_steps=1,
+            validation_steps=int(2000 / 64),
             workers=4,
             verbose=1,
             callbacks=[checkpoint])
-
-        # self.model.fit(
-        #     trainX, trainX,
-        #     validation_data=(testX, testX),
-        #     epochs=EPOCHS,
-        #     batch_size=BS)
-
-        # self.model.save_weights('model', save_format='tf')
 
     def predict(self, fp: str):
         print('================================================')
@@ -109,15 +60,20 @@ class Estimator:
         # output = Image.fromarray((batch[0] * 255).astype(np.uint8))
 
         coordinates = batch[1][0]
+        print(coordinates)
+
+        font = ImageFont.load_default()
 
         draw = ImageDraw.Draw(output)
-        for (x, y, w, h) in coordinates:
+        for (x, y, w, h, r, t) in coordinates:
             bbox = (x, y, x + w, y + h)
             draw.rectangle(bbox, outline='red')
+            draw.text((x + 3, y), 'R' if r > t else 'T', 'red', font=font)
         output.save('output.jpg', 'JPEG', quality=100, subsampling=0)
 
         draw1 = ImageDraw.Draw(image)
-        for (x, y, w, h) in coordinates:
+        for (x, y, w, h, r, t) in coordinates:
             bbox = (x, y, x + w, y + h)
             draw1.rectangle(bbox, outline='red')
+            draw1.text((x + 3, y), 'R' if r > t else 'T', 'red', font=font)
         image.save('real.jpg', 'JPEG', quality=100, subsampling=0)
