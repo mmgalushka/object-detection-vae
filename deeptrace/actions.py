@@ -2,13 +2,12 @@
 A module for handling user actions. 
 """
 
-from .tfrecords import create_generator
 from .models import create_model
 from .estimator import create_estimator
-from .losses import hungarian_dist, total_dist
+
 from .image import IMAGE_CHANNELS, IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_CAPACITY, Palette, Background
 from .dataset import DATASET_DIR, DATASET_SIZE, DataFormat, create_csv_dataset
-from .tfrecords import TFRECORDS_CAPACITY, create_tfrecords
+from .tfrecords import create_tfrecords
 
 
 def dataset(subparsers):
@@ -101,11 +100,11 @@ def tfrecords(subparsers):
         create_tfrecords(
             dataset_dir=args.input,
             dataset_format=args.format,
+            dataset_categories=['rectangle', 'triangle'],
             tfrecords_dir=args.output,
-            tfrecords_capacity=args.capacity,
+            tfrecords_size=args.size,
             image_width=args.image_width,
             image_height=args.image_height,
-            image_channels=args.image_channels,
             verbose=args.verbose)
 
     # ---------------------------------
@@ -139,33 +138,26 @@ def tfrecords(subparsers):
         default=None,
         help=f'an output directory for TFRecords (default=None)')
     parser.add_argument(
-        '-c',
-        '--capacity',
+        '-s',
+        '--size',
         metavar='NUMBER',
         type=int,
-        default=TFRECORDS_CAPACITY,
-        help=f'a number of records per partion (default="{TFRECORDS_CAPACITY}")'
-    )
+        default=256,
+        help=f'a number of records per partion (default=256)')
 
     # --- image options ---------------
     parser.add_argument(
         '--image-width',
         metavar='PIXELS',
         type=int,
-        default=IMAGE_WIDTH,
-        help=f'a recording image width (default={IMAGE_WIDTH})')
+        default=None,
+        help=f'an image width resize to (default=None)')
     parser.add_argument(
         '--image-height',
         metavar='PIXELS',
         type=int,
-        default=IMAGE_HEIGHT,
-        help=f'a recording image height (default={IMAGE_HEIGHT})')
-    parser.add_argument(
-        '--image-channels',
-        metavar='NUMBER',
-        type=int,
-        default=IMAGE_CHANNELS,
-        help=f'a recording image channels (default={IMAGE_CHANNELS})')
+        default=None,
+        help=f'an image height resize to (default=None)')
 
     # --- system options --------------
     parser.add_argument(
@@ -179,21 +171,32 @@ def train(subparsers):
 
     def run(args):
 
-        input_shape = (64, 64, 3)
-        latent_size = 1024
+        # input_shape = (64, 64, 3)
+        # latent_size = 1024
 
-        losses = {"default_decoder_1": 'mae', "concatenate": total_dist}
-        lossWeights = {"default_decoder_1": 1, "concatenate": 0.01}
+        # losses = {"default_decoder_1": 'mae', "concatenate": total_dist}
+        # lossWeights = {"default_decoder_1": 1, "concatenate": 0.01}
 
-        model = create_model(input_shape, latent_size)
+        # model = create_model(input_shape, latent_size)
 
-        model.compile(optimizer='adam', loss=losses, loss_weights=lossWeights)
+        # model.compile(optimizer='adam', loss=losses, loss_weights=lossWeights)
 
-        estimator = create_estimator(model)
+        # estimator = create_estimator(model)
 
-        train_data = create_generator('dataset/synthetic-tfrecords/train')
-        validation_data = create_generator('dataset/synthetic-tfrecords/val')
-        estimator.train(train_data, validation_data)
+        # train_data = create_generator('dataset/synthetic-tfrecords/train')
+        # validation_data = create_generator('dataset/synthetic-tfrecords/val')
+        # estimator.train(train_data, validation_data)
+
+        estimator = create_estimator(
+            input_shape=(args.image_width, args.image_height,
+                         args.image_channels),
+            latent_size=1024,
+            detecting_categories=args.categories)
+        estimator.train(
+            train_dir=args.train_dir,
+            val_dir=args.val_dir,
+            batch_size=64,
+            verbose=args.verbose)
 
     # -----------------------------
     # Sets "train" command options
@@ -201,6 +204,57 @@ def train(subparsers):
     parser = subparsers.add_parser('train')
     parser.set_defaults(func=run)
 
+    # --- input options ---------------
+    parser.add_argument(
+        '--train-dir',
+        metavar='DIR',
+        type=str,
+        required=True,
+        help=f'an input directory with training data')
+    parser.add_argument(
+        '--val-dir',
+        metavar='DIR',
+        type=str,
+        required=True,
+        help=f'an input directory with validation data')
+
+    # --- image options ---------------
+    parser.add_argument(
+        '--image-width',
+        metavar='PIXELS',
+        type=int,
+        nargs=1,
+        default=IMAGE_WIDTH,
+        help=f'a generated image width (default={IMAGE_WIDTH})')
+    parser.add_argument(
+        '--image-height',
+        metavar='PIXELS',
+        type=int,
+        nargs=1,
+        default=IMAGE_HEIGHT,
+        help=f'a generated image height (default={IMAGE_HEIGHT})')
+    parser.add_argument(
+        '--image-channels',
+        metavar='NUMBER',
+        type=int,
+        default=IMAGE_CHANNELS,
+        help=f'a number of image channels (default={IMAGE_CHANNELS})')
+    parser.add_argument(
+        '--image-capacity',
+        metavar='NUMBER',
+        type=int,
+        default=2,
+        help=f'a number of detecting objects per image (default=2)')
+
+    # --- training options ------------
+    parser.add_argument(
+        '--categories',
+        metavar='PIXELS',
+        type=str,
+        nargs='+',
+        help=f'a list of predicting categories')
+
+    # --- system options --------------
     parser.add_argument(
         '-v',
         '--verbose',
@@ -211,11 +265,11 @@ def train(subparsers):
 def predict(subparsers):
 
     def run(args):
-        input_shape = (64, 64, 3)
-        latent_size = 1024
 
-        model = create_model(input_shape, latent_size)
-        estimator = create_estimator(model)
+        estimator = create_estimator(
+            input_shape=(64, 64, 3),
+            latent_size=1024,
+            detecting_categories=['rectangle', 'triangle'])
 
         estimator.predict(args.input)
 

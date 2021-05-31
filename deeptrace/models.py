@@ -150,8 +150,8 @@ class ObjectLocalizer(Model):
         x = Dense(1024, activation='relu')(local_input)
         x = Dense(512, activation='relu')(x)
         x = Dense(128, activation='relu')(x)
-        x = Dense(8)(x)
-        local_output = Reshape((2, 4))(x)
+        x = Dense(100 * 4)(x)
+        local_output = Reshape((100, 4))(x)
 
         super().__init__(local_input, local_output)
 
@@ -165,9 +165,8 @@ class ObjectClassifier(Model):
         x = Dense(1024, activation='relu')(class_input)
         x = Dense(512, activation='relu')(x)
         x = Dense(128, activation='relu')(x)
-        x = Dense(4)(x)
-        class_output = Reshape((2, 2))(x)
-
-        class_output = tf.keras.activations.softmax(class_output)
+        x = Dense(100 * 3)(x)
+        x = Reshape((100, 3))(x)
+        class_output = tf.keras.activations.softmax(x, axis=-1)
 
         super().__init__(class_input, class_output)

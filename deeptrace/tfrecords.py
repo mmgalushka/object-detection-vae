@@ -1,10 +1,13 @@
 """
 A module for converting a data source to TFRecords.
 """
+from __future__ import annotations
 
+from os import X_OK
 import pathlib
 import json
 import glob
+from tensorflow.python.framework.ops import Tensor
 
 import yaml
 import tensorflow as tf
@@ -13,20 +16,18 @@ import pandas as pd
 from tqdm import tqdm
 from PIL import Image
 
-from .dataset import DATASET_DIR, DATASET_FORMAT, DATASET_CATEGORIES, DataFormat
-from .image import IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_CHANNELS, IMAGE_CAPACITY
+from .dataset import DataFormat
 
-TFRECORDS_CAPACITY = 256
+tf.compat.v1.enable_eager_execution()
 
 
-def create_tfrecords(dataset_dir: str = DATASET_DIR,
-                     dataset_format: DataFormat = DATASET_FORMAT,
-                     dataset_categories: list = DATASET_CATEGORIES,
+def create_tfrecords(dataset_dir: str,
+                     dataset_format: DataFormat,
+                     dataset_categories: list,
                      tfrecords_dir: str = None,
-                     tfrecords_capacity: int = TFRECORDS_CAPACITY,
-                     image_width: int = IMAGE_WIDTH,
-                     image_height: int = IMAGE_HEIGHT,
-                     image_channels: int = IMAGE_CHANNELS,
+                     tfrecords_size: int = 256,
+                     image_width: int = None,
+                     image_height: int = None,
                      verbose: bool = False):
     # Gets input directory, containing dataset files that need to be
     # transformed to TFRecords.
@@ -42,22 +43,22 @@ def create_tfrecords(dataset_dir: str = DATASET_DIR,
     output_dir.mkdir(exist_ok=True)
 
     # Creates a map for mapping categories
-    categories_map = {
-        category: code for code, category in enumerate(dataset_categories)
-    }
+    # full_dataset_categories = dataset_categories.copy()
+    # full_dataset_categories.insert(0, None)
+    # categories_map = {
+    #     category: code for code, category in enumerate(full_dataset_categories)
+    # }
 
     if dataset_format == DataFormat.CSV:
-        _csv_to_tfrecords(input_dir, output_dir, categories_map,
-                          tfrecords_capacity, image_width, image_height,
-                          image_channels, verbose)
+        _csv_to_tfrecords(input_dir, output_dir, dataset_categories,
+                          tfrecords_size, image_width, image_height, verbose)
     else:
         raise ValueError('invalid ')
 
 
 def _csv_to_tfrecords(input_dir: pathlib.Path, output_dir: pathlib.Path,
-                      categories_map: dict, tfrecords_capacity: int,
-                      image_width: int, image_height: int, image_channels: int,
-                      verbose: bool):
+                      categories: list, tfrecords_size: int, image_width: int,
+                      image_height: int, verbose: bool):
 
     # --- Internal function ----------------------------------------------------
     # The function receives a CSV row and converts it into an example.
@@ -72,7 +73,7 @@ def _csv_to_tfrecords(input_dir: pathlib.Path, output_dir: pathlib.Path,
             **_image_feature(fp, image_width, image_height),
             **_bboxes_feature(json.loads(row['bboxes'])),
             **_segments_feature(json.loads(row['segments'])),
-            **_categories_feature(eval(row['categories']), categories_map)
+            **_categories_feature(eval(row['categories']))
         }
         return tf.train.Example(features=tf.train.Features(feature=feature))
 
@@ -113,14 +114,14 @@ def _csv_to_tfrecords(input_dir: pathlib.Path, output_dir: pathlib.Path,
         # The count of how many records stored in the TFRecords files. It
         # is set here to maximum capacity (as a trick) to make the "if"
         # condition in the loop equals to True and start 0 - partition.
-        part_count = tfrecords_capacity
+        part_count = tfrecords_size
 
         # Initializes the progress bar of verbose mode is on.
         if verbose:
             pbar = tqdm(total=len(df))
 
         for _, row in df.iterrows():
-            if part_count >= tfrecords_capacity:
+            if part_count >= tfrecords_size:
                 # The current partition has been reached the maximum capacity,
                 # so we need to start a new one.
                 if writer is not None:
@@ -151,8 +152,20 @@ def _csv_to_tfrecords(input_dir: pathlib.Path, output_dir: pathlib.Path,
 def _image_feature(fp: pathlib.Path, width: int, height: int):
     """Returns a bytes_list from a string / byte."""
     image = Image.open(fp)
-    array = np.array(image.resize((width, height)))
+    if isinstance(width, int) and isinstance(height, int):
+        array = np.array(image.resize((width, height)))
+    elif width is None and height is None:
+        array = np.array(image)
+    else:
+        raise ValueError(
+            'Invalid arguments for resizing an image. Both arguments '
+            'representing image width and height must be either integer '
+            f'or None. But received width is {type(width)} and height is '
+            f'{type(height)}.')
     return {
+        'image/shape':
+            tf.train.Feature(
+                int64_list=tf.train.Int64List(value=list(array.shape))),
         'image/content':
             tf.train.Feature(
                 bytes_list=tf.train.BytesList(value=[array.tostring()]))
@@ -166,6 +179,9 @@ def _bboxes_feature(bboxes: list):
         data.extend(bbox)
 
     return {
+        'bboxes/number':
+            tf.train.Feature(
+                int64_list=tf.train.Int64List(value=[len(bboxes)])),
         'bboxes/data':
             tf.train.Feature(int64_list=tf.train.Int64List(value=data))
     }
@@ -187,50 +203,56 @@ def _segments_feature(segments: list):
     }
 
 
-def _categories_feature(categories: list, categories_map: dict):
+def _categories_feature(categories: list):
     """Returns an int64_list from a bool / enum / int / uint."""
-    one_hot = np.zeros((len(categories), len(categories_map)), dtype=int)
-    for i, category in enumerate(categories):
-        one_hot[i, categories_map[category]] = 1
-    one_hot = one_hot.flatten()
-
     return {
-        'categories':
-            tf.train.Feature(int64_list=tf.train.Int64List(value=one_hot))
+        'categories/number':
+            tf.train.Feature(
+                int64_list=tf.train.Int64List(value=[len(categories)])),
+        'categories/data':
+            tf.train.Feature(
+                bytes_list=tf.train.BytesList(
+                    value=[category.encode('utf-8') for category in categories])
+            )
     }
 
 
-def create_generator(tfrecords_dir):
+def create_generator(tfrecords_dir: pathlib.Path,
+                     detecting_categories: list,
+                     num_detecting_objects=100,
+                     batch_size=64):
 
     def _parse_function(proto):
         keys_to_features = {
+            'image/shape':
+                tf.io.FixedLenSequenceFeature([], tf.int64, allow_missing=True),
             'image/content':
                 tf.io.FixedLenSequenceFeature([], tf.string,
                                               allow_missing=True),
+            'bboxes/number':
+                tf.io.FixedLenSequenceFeature([], tf.int64, allow_missing=True),
             'bboxes/data':
                 tf.io.FixedLenSequenceFeature([], tf.int64, allow_missing=True),
-            'categories':
-                tf.io.FixedLenSequenceFeature([], tf.int64, allow_missing=True)
+            'categories/number':
+                tf.io.FixedLenSequenceFeature([], tf.int64, allow_missing=True),
+            'categories/data':
+                tf.io.FixedLenSequenceFeature([], tf.string, allow_missing=True)
         }
         parsed_features = tf.io.parse_single_example(proto, keys_to_features)
-        parsed_features['image/content'] = tf.io.decode_raw(
-            parsed_features['image/content'], tf.uint8)
-        x = tf.reshape(parsed_features['image/content'], (64, 64, 3))
-        x = tf.cast(x, tf.float32) / 255.0
 
-        b = parsed_features['bboxes/data']
-        b = tf.reshape(b, (2, 4))
-        b = tf.cast(b, dtype=tf.float32)
+        X = tf.io.decode_raw(parsed_features['image/content'], tf.uint8)
+        X = tf.reshape(X, parsed_features['image/shape'])
+        X = tf.cast(X, tf.float32) / 255.0
 
-        c = parsed_features['categories']
-        c = tf.reshape(c, (2, 2))
-        c = tf.cast(c, dtype=tf.float32)
+        bboxes = feature_to_bboxes(parsed_features, num_detecting_objects)
+        categories = feature_to_categories(parsed_features,
+                                           detecting_categories,
+                                           num_detecting_objects)
+        y = tf.concat([bboxes, categories], axis=1)
 
-        y = tf.concat([b, c], axis=1)
+        return X, (X, y)
 
-        return x, (x, y)
-
-    tfrecord_files = glob.glob(f'{tfrecords_dir}/part-*.tfrecord')
+    tfrecord_files = glob.glob(str(tfrecords_dir / 'part-*.tfrecord'))
 
     AUTOTUNE = tf.data.experimental.AUTOTUNE
 
@@ -239,6 +261,80 @@ def create_generator(tfrecords_dir):
     dataset = dataset.repeat()
     dataset = dataset.shuffle(2048)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
-    dataset = dataset.batch(64)
+    dataset = dataset.batch(batch_size)
 
     return dataset
+
+
+def feature_to_bboxes(parsed_features, num_detecting_objects: int) -> tf.Tensor:
+    # Loads all binding boxes defined in a TFRecord.
+
+    n = parsed_features['bboxes/number'][0]
+    # 2
+
+    bboxes = parsed_features['bboxes/data']
+    bboxes = tf.reshape(bboxes, (-1, 4))
+    # [[1 2 3 4]
+    #  [5 6 7 8]], shape=(2, 4), dtype=int32
+
+    if n < num_detecting_objects:
+        # If the obtained number of record binding boxes is less than the
+        # detection capacity, then the binding boxes must be padded with
+        # [0, 0, 0, 0].
+        bboxes = tf.pad(
+            bboxes, [[0, num_detecting_objects - n], [0, 0]], constant_values=0)
+        # [[1 2 3 4]
+        #  [5 6 7 8]
+        #  [0 0 0 0]
+        #  [0 0 0 0]], shape=(4, 4), dtype=int32)
+        # values = [b'rectangle' b'triangle' b'[UNK]' b'[UNK]'], shape=(4,)
+    elif n > 4:
+        # If the obtained number of record binding boxes is greater than the
+        # detection capacity, then the  binding boxes list must be sliced.
+        bboxes = tf.slice(bboxes, [0, 0], [num_detecting_objects, 4])
+
+    bboxes = tf.cast(bboxes, dtype=tf.float32)
+    # [[1. 2. 3. 4.]
+    #  [5. 6. 7. 8.]
+    #  [0. 0. 0. 0.]
+    #  [0. 0. 0. 0.]], shape=(4, 4), dtype=float32
+    return bboxes
+
+
+def feature_to_categories(parsed_features, detecting_categories: list,
+                          num_detecting_objects: int) -> tf.Tensor:
+    # Loads all categories values defined in a TFRecord.
+
+    n = parsed_features['categories/number'][0]
+    # 2
+
+    categories = parsed_features['categories/data']
+    # [b'rectangle' b'triangle'], shape=(4,), dtype=string
+
+    if n < num_detecting_objects:
+        # If the obtained number of record categories less than the
+        # detection capacity, then the categories list must be padded with
+        # "unknown category".
+        categories = tf.pad(
+            categories, [[0, num_detecting_objects - n]],
+            constant_values='[UNK]')
+        # [b'rectangle' b'triangle' b'[UNK]' b'[UNK]'], shape=(4,), dtype=string
+    elif n > num_detecting_objects:
+        # If the obtained number of record categories greater than the
+        # detection capacity, then the categories list must be sliced.
+        categories = tf.slice(categories, [0], [num_detecting_objects])
+
+    categories = tf.keras.layers.experimental.preprocessing.StringLookup(
+        vocabulary=detecting_categories)(
+            categories)
+    # [2 3 1 1], shape=(4,), dtype=int64
+
+    categories = categories - tf.constant(1, dtype=tf.int64)
+    # [1 2 0 0], shape=(4,), dtype=int64
+
+    categories = tf.one_hot(categories, len(detecting_categories) + 1)
+    # [[0. 1. 0.]
+    #  [0. 0. 1.]
+    #  [1. 0. 0.]
+    #  [1. 0. 0.]], shape=(4, 3), dtype=float32
+    return categories

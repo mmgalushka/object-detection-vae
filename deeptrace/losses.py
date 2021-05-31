@@ -199,7 +199,7 @@ def total_dist(y_true, y_pred):
     # return tf.reduce_sum(tf.math.multiply(dist, mask), (1, 2))
 
     bbox_n = 4
-    label_n = 2
+    label_n = 3
 
     bbox_true = tf.slice(v_true, [0, 0, 0], [-1, 2, bbox_n])
     bbox_pred = tf.slice(v_pred, [0, 0, 0], [-1, 2, bbox_n])
