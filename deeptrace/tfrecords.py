@@ -217,6 +217,25 @@ def _categories_feature(categories: list):
     }
 
 
+def count_records(tfrecords_dir: pathlib.Path, verbose: bool) -> int:
+    records_count = 0
+
+    tfrecord_files = glob.glob(str(tfrecords_dir / 'part-*.tfrecord'))
+
+    # Initializes the progress bar of verbose mode is on.
+    if verbose:
+        pbar = tqdm(total=len(tfrecord_files))
+
+    for tfrecord_files in tfrecord_files:
+        # Counts number of record per TFRecords file.
+        records_count += sum(1 for _ in tf.data.TFRecordDataset(tfrecord_files))
+        # Updates the progress bar of verbose mode is on.
+        if verbose:
+            pbar.update(1)
+
+    return records_count
+
+
 def create_generator(tfrecords_dir: pathlib.Path,
                      detecting_categories: list,
                      num_detecting_objects=100,

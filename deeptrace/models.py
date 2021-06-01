@@ -13,7 +13,7 @@ import numpy as np
 import tensorflow.keras.backend as K
 from tensorflow.keras.layers import (Input, BatchNormalization, Conv2D, Flatten,
                                      Lambda, Dense, Reshape, Conv2DTranspose,
-                                     Concatenate, Activation)
+                                     Concatenate, Activation, MaxPooling2D)
 from tensorflow.keras.losses import binary_crossentropy, mean_absolute_error
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras import Model
@@ -23,7 +23,9 @@ from .layers import KLDivergence
 
 def create_model(input_shape, latent_size):
     encoder = DefaultEncoder(input_shape, latent_size)
+    encoder.summary()
     decoder = DefaultDecoder(input_shape, latent_size)
+    decoder.summary()
     sampler = KLSampler(code_size=latent_size, beta=0.01)
 
     localizer = ObjectLocalizer(latent_size)
@@ -63,83 +65,167 @@ class DefaultEncoder(Model):
 
     def __init__(self, input_shape, latent_size):
         super().__init__()
-
-        encoder_conv_1 = Conv2D(
-            filters=8,
-            kernel_size=3,
-            strides=2,
-            padding='same',
-            activation='relu',
-            name='encoder_conv_1')
-        encoder_conv_2 = Conv2D(
-            filters=16,
-            kernel_size=3,
-            strides=2,
-            padding='same',
-            activation='relu',
-            name='encoder_conv_2')
-        encoder_flatten = Flatten(name='encoder_flatten')
-        encoder_z_mean = Dense(
-            latent_size, activation='linear', name='encoder_z_mean')
-        encoder_z_log_var = Dense(
-            latent_size, activation='linear', name='encoder_z_log_var')
-
         encoder_input = Input(shape=input_shape, name='encoder_input')
-        hidden = encoder_conv_1(encoder_input)
-        hidden = encoder_conv_2(hidden)
-        hidden = encoder_flatten(hidden)
-        z_mean = encoder_z_mean(hidden)
-        z_log_var = encoder_z_log_var(hidden)
+        encoder = Conv2D(
+            filters=32,
+            kernel_size=(3, 3),
+            padding='same',
+            activation='relu',
+            name='encoder_conv_1')(
+                encoder_input)
+        encoder = MaxPooling2D(
+            pool_size=(2, 2), name='encoder_max_pool_1')(
+                encoder)
+        encoder = Conv2D(
+            filters=64,
+            kernel_size=(3, 3),
+            padding='same',
+            activation='relu',
+            name='encoder_conv_2')(
+                encoder)
+        encoder = MaxPooling2D(
+            pool_size=(2, 2), name='encoder_max_pool_2')(
+                encoder)
+        encoder = Conv2D(
+            filters=128,
+            kernel_size=(3, 3),
+            padding='same',
+            activation='relu',
+            name='encoder_conv_3')(
+                encoder)
+        encoder = MaxPooling2D(
+            pool_size=(2, 2), name='encoder_max_pool_3')(
+                encoder)
+        encoder = Conv2D(
+            filters=256,
+            kernel_size=(3, 3),
+            padding='same',
+            activation='relu',
+            name='encoder_conv_4')(
+                encoder)
+        encoder = MaxPooling2D(
+            pool_size=(2, 2), name='encoder_max_pool_4')(
+                encoder)
+        encoder = Flatten(name='encoder_flatten')(encoder)
+        mean = Dense(latent_size, name='encoder_mean')(encoder)
+        logvar = Dense(latent_size, name='logvar_mean')(encoder)
+        super().__init__(encoder_input, [mean, logvar], name='DefaultEncoder')
 
-        super().__init__(encoder_input, [z_mean, z_log_var])
+        # encoder_conv_1 = Conv2D(
+        #     filters=8,
+        #     kernel_size=3,
+        #     strides=2,
+        #     padding='same',
+        #     activation='relu',
+        #     name='encoder_conv_1')
+        # encoder_conv_2 = Conv2D(
+        #     filters=16,
+        #     kernel_size=3,
+        #     strides=2,
+        #     padding='same',
+        #     activation='relu',
+        #     name='encoder_conv_2')
+        # encoder_flatten = Flatten(name='encoder_flatten')
+        # encoder_z_mean = Dense(
+        #     latent_size, activation='linear', name='encoder_z_mean')
+        # encoder_z_log_var = Dense(
+        #     latent_size, activation='linear', name='encoder_z_log_var')
+
+        # encoder_input = Input(shape=input_shape, name='encoder_input')
+        # hidden = encoder_conv_1(encoder_input)
+        # hidden = encoder_conv_2(hidden)
+        # hidden = encoder_flatten(hidden)
+        # z_mean = encoder_z_mean(hidden)
+        # z_log_var = encoder_z_log_var(hidden)
+
+        # super().__init__(encoder_input, [z_mean, z_log_var])
 
 
 class DefaultDecoder(Model):
 
     def __init__(self, input_shape, latent_size):
         super().__init__()
-
-        decoder_dense_latent = Dense(
-            64 * 8 * 8, activation='relu', name='decoder_latent')
-        decoder_reshape = Reshape((8, 8, 64))
-
-        decoder_conv_1 = Conv2DTranspose(
-            filters=64,
-            kernel_size=3,
-            strides=2,
-            padding='same',
-            activation='relu',
-            name='decoder_conv_1')
-        decoder_conv_2 = Conv2DTranspose(
-            filters=32,
-            kernel_size=3,
-            strides=2,
-            padding='same',
-            activation='relu',
-            name='decoder_conv_2')
-        decoder_conv_3 = Conv2DTranspose(
-            filters=16,
-            kernel_size=3,
-            strides=2,
-            padding='same',
-            activation='relu',
-            name='decoder_conv_3')
-        decoder_output = Conv2DTranspose(
-            filters=3,  #channels,
-            kernel_size=3,
-            activation='sigmoid',
-            padding='same',
-            name='decoder_output')
-
         decoder_input = Input(shape=(latent_size,), name='decoder_input')
-        hidden = decoder_dense_latent(decoder_input)
-        hidden = decoder_reshape(hidden)
-        hidden = decoder_conv_1(hidden)
-        hidden = decoder_conv_2(hidden)
-        hidden = decoder_conv_3(hidden)
-        decoder_output = decoder_output(hidden)
+        decoder = Dense(2 * 2 * 256, name='decoder_dense')(decoder_input)
+        decoder = Reshape((2, 2, 256), name='decoder_reshape')(decoder)
+        decoder = Conv2DTranspose(
+            filters=128,
+            kernel_size=(3, 3),
+            strides=2,
+            activation='relu',
+            padding='same')(
+                decoder)
+        decoder = Conv2DTranspose(
+            filters=64,
+            kernel_size=(3, 3),
+            strides=2,
+            activation='relu',
+            padding='same')(
+                decoder)
+        decoder = Conv2DTranspose(
+            filters=32,
+            kernel_size=(3, 3),
+            strides=2,
+            activation='relu',
+            padding='same')(
+                decoder)
+        decoder = Conv2DTranspose(
+            filters=16,
+            kernel_size=(3, 3),
+            strides=2,
+            activation='relu',
+            padding='same')(
+                decoder)
+        decoder_output = Conv2DTranspose(
+            filters=input_shape[-1],
+            kernel_size=(3, 3),
+            strides=2,
+            activation=None,
+            padding='same')(
+                decoder)
+        super().__init__(decoder_input, decoder_output, name='DefaultDecoder')
 
-        super().__init__(decoder_input, decoder_output)
+        # decoder_dense_latent = Dense(
+        #     64 * 8 * 8, activation='relu', name='decoder_latent')
+        # decoder_reshape = Reshape((8, 8, 64))
+
+        # decoder_conv_1 = Conv2DTranspose(
+        #     filters=64,
+        #     kernel_size=3,
+        #     strides=2,
+        #     padding='same',
+        #     activation='relu',
+        #     name='decoder_conv_1')
+        # decoder_conv_2 = Conv2DTranspose(
+        #     filters=32,
+        #     kernel_size=3,
+        #     strides=2,
+        #     padding='same',
+        #     activation='relu',
+        #     name='decoder_conv_2')
+        # decoder_conv_3 = Conv2DTranspose(
+        #     filters=16,
+        #     kernel_size=3,
+        #     strides=2,
+        #     padding='same',
+        #     activation='relu',
+        #     name='decoder_conv_3')
+        # decoder_output = Conv2DTranspose(
+        #     filters=3,  #channels,
+        #     kernel_size=3,
+        #     activation='sigmoid',
+        #     padding='same',
+        #     name='decoder_output')
+
+        # decoder_input = Input(shape=(latent_size,), name='decoder_input')
+        # hidden = decoder_dense_latent(decoder_input)
+        # hidden = decoder_reshape(hidden)
+        # hidden = decoder_conv_1(hidden)
+        # hidden = decoder_conv_2(hidden)
+        # hidden = decoder_conv_3(hidden)
+        # decoder_output = decoder_output(hidden)
+
+        # super().__init__(decoder_input, decoder_output)
 
 
 class ObjectLocalizer(Model):

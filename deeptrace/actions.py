@@ -3,7 +3,7 @@ A module for handling user actions.
 """
 
 from .models import create_model
-from .estimator import create_estimator
+from .estimator import NUM_DETECTING_OBJECTS, BATCH_SIZE, EPOCHS, create_estimator
 
 from .image import IMAGE_CHANNELS, IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_CAPACITY, Palette, Background
 from .dataset import DATASET_DIR, DATASET_SIZE, DataFormat, create_csv_dataset
@@ -170,32 +170,20 @@ def tfrecords(subparsers):
 def train(subparsers):
 
     def run(args):
-
-        # input_shape = (64, 64, 3)
-        # latent_size = 1024
-
-        # losses = {"default_decoder_1": 'mae', "concatenate": total_dist}
-        # lossWeights = {"default_decoder_1": 1, "concatenate": 0.01}
-
-        # model = create_model(input_shape, latent_size)
-
-        # model.compile(optimizer='adam', loss=losses, loss_weights=lossWeights)
-
-        # estimator = create_estimator(model)
-
-        # train_data = create_generator('dataset/synthetic-tfrecords/train')
-        # validation_data = create_generator('dataset/synthetic-tfrecords/val')
-        # estimator.train(train_data, validation_data)
-
         estimator = create_estimator(
             input_shape=(args.image_width, args.image_height,
                          args.image_channels),
             latent_size=1024,
-            detecting_categories=args.categories)
+            detecting_categories=args.detecting_categories)
+
         estimator.train(
             train_dir=args.train_dir,
             val_dir=args.val_dir,
-            batch_size=64,
+            num_detecting_objects=args.num_detecting_objects,
+            batch_size=args.batch_size,
+            train_steps_per_epoch=args.train_steps_per_epoch,
+            val_steps_per_epoch=args.val_steps_per_epoch,
+            epochs=args.epochs,
             verbose=args.verbose)
 
     # -----------------------------
@@ -217,6 +205,13 @@ def train(subparsers):
         type=str,
         required=True,
         help=f'an input directory with validation data')
+    parser.add_argument(
+        '--detecting-categories',
+        metavar='LABEL',
+        type=str,
+        nargs='+',
+        required=True,
+        help=f'a list of detecting categories')
 
     # --- image options ---------------
     parser.add_argument(
@@ -239,20 +234,39 @@ def train(subparsers):
         type=int,
         default=IMAGE_CHANNELS,
         help=f'a number of image channels (default={IMAGE_CHANNELS})')
-    parser.add_argument(
-        '--image-capacity',
-        metavar='NUMBER',
-        type=int,
-        default=2,
-        help=f'a number of detecting objects per image (default=2)')
 
     # --- training options ------------
     parser.add_argument(
-        '--categories',
-        metavar='PIXELS',
-        type=str,
-        nargs='+',
-        help=f'a list of predicting categories')
+        '--num-detecting-objects',
+        metavar='NUMBER',
+        type=int,
+        default=NUM_DETECTING_OBJECTS,
+        help=f'a number of detecting objects per image (default={NUM_DETECTING_OBJECTS})'
+    )
+    parser.add_argument(
+        '--batch-size',
+        metavar='SIZE',
+        type=int,
+        default=BATCH_SIZE,
+        help=f'a batch size (default={BATCH_SIZE})')
+    parser.add_argument(
+        '--train-steps-per-epoch',
+        metavar='NUMBER',
+        type=int,
+        default=0,
+        help='a number of trining steps per epoch (default=0)')
+    parser.add_argument(
+        '--val-steps-per-epoch',
+        metavar='NUMBER',
+        type=int,
+        default=0,
+        help='a number of validation steps per epoch (default=0)')
+    parser.add_argument(
+        '--epochs',
+        metavar='NUMBER',
+        type=int,
+        default=EPOCHS,
+        help=f'a number of training epochs (default={EPOCHS})')
 
     # --- system options --------------
     parser.add_argument(

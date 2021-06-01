@@ -2,6 +2,7 @@
 A module for orchestrating model training and prediction.
 """
 
+import math
 import pathlib
 
 import tensorflow as tf
@@ -15,7 +16,7 @@ import PIL.ImageDraw as ImageDraw
 import PIL.ImageFont as ImageFont
 import math
 
-from .tfrecords import create_generator
+from .tfrecords import create_generator, count_records
 from .models import create_model
 from .losses import hungarian_dist, total_dist
 
@@ -23,13 +24,17 @@ from .losses import hungarian_dist, total_dist
 # tf.config.experimental.set_memory_growth(gpus[0], True)
 # tf.compat.v1.enable_eager_execution()
 
+NUM_DETECTING_OBJECTS = 100
+BATCH_SIZE = 64
+EPOCHS = 100
+
 
 def create_estimator(input_shape: tuple, latent_size: int,
                      detecting_categories: list):
     model = create_model(input_shape, latent_size)
 
-    losses = {"default_decoder_1": 'mae', "concatenate": total_dist}
-    lossWeights = {"default_decoder_1": 1, "concatenate": 0.01}
+    losses = {"DefaultDecoder": 'mae', "concatenate": total_dist}
+    lossWeights = {"DefaultDecoder": 1, "concatenate": 0.01}
 
     model.compile(optimizer='adam', loss=losses, loss_weights=lossWeights)
 
@@ -42,8 +47,9 @@ class Estimator:
         self.model = model
         self.detecting_categories = detecting_categories
 
-    def train(self, train_dir: str, val_dir: str, batch_size: int,
-              verbose: bool):
+    def train(self, train_dir: str, val_dir: str, num_detecting_objects: int,
+              batch_size: int, train_steps_per_epoch: int,
+              val_steps_per_epoch: int, epochs: int, verbose: bool):
         checkpoint = ModelCheckpoint(
             'model.h5',
             save_best_only=True,
@@ -53,25 +59,38 @@ class Estimator:
 
         self.model.summary()
 
+        train_tfrecords_dir = pathlib.Path(train_dir)
         train_data = create_generator(
-            tfrecords_dir=pathlib.Path(train_dir),
+            tfrecords_dir=train_tfrecords_dir,
             detecting_categories=self.detecting_categories,
-            num_detecting_objects=100,
+            num_detecting_objects=num_detecting_objects,
             batch_size=batch_size)
+        # Counts the number of training steps per epoch if it number
+        # is not specified.
+        if train_steps_per_epoch == 0:
+            train_steps_per_epoch = math.ceil(
+                count_records(train_tfrecords_dir, verbose) / batch_size)
+
+        val_tfrecords_dir = pathlib.Path(val_dir)
         validation_data = create_generator(
-            tfrecords_dir=pathlib.Path(val_dir),
+            tfrecords_dir=val_tfrecords_dir,
             detecting_categories=self.detecting_categories,
-            num_detecting_objects=100,
+            num_detecting_objects=num_detecting_objects,
             batch_size=batch_size)
+        # Counts the number of validation steps per epoch if it number
+        # is not specified.
+        if val_steps_per_epoch == 0:
+            val_steps_per_epoch = math.ceil(
+                count_records(val_tfrecords_dir, verbose) / batch_size)
 
         self.model.fit(
             train_data,
-            steps_per_epoch=int(7000 / batch_size),
-            epochs=300,
+            steps_per_epoch=train_steps_per_epoch,
+            epochs=epochs,
             validation_data=validation_data,
-            validation_steps=int(2000 / batch_size),
+            validation_steps=val_steps_per_epoch,
             workers=4,
-            verbose=1,
+            verbose=int(verbose),
             callbacks=[checkpoint])
 
     def predict(self, fp: str):
