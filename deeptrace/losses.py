@@ -201,22 +201,26 @@ def total_dist(y_true, y_pred):
     bbox_n = 4
     label_n = 3
 
-    bbox_true = tf.slice(v_true, [0, 0, 0], [-1, 2, bbox_n])
-    bbox_pred = tf.slice(v_pred, [0, 0, 0], [-1, 2, bbox_n])
+    bbox_true = tf.slice(v_true, [0, 0, 0], [-1, 3, bbox_n])
+    bbox_pred = tf.slice(v_pred, [0, 0, 0], [-1, 3, bbox_n])
 
-    label_true = tf.slice(v_true, [0, 0, bbox_n], [-1, 2, label_n])
-    label_pred = tf.slice(v_pred, [0, 0, bbox_n], [-1, 2, label_n])
+    label_true = tf.slice(v_true, [0, 0, bbox_n], [-1, 3, label_n])
+    label_pred = tf.slice(v_pred, [0, 0, bbox_n], [-1, 3, label_n])
 
     bbox_dist = euclidean_distance(bbox_true, bbox_pred)
-    lable_entropy = pair_categorical_crossentropy(label_true, label_pred)
+    label_entropy = pair_categorical_crossentropy(label_true, label_pred)
+
+    combine_loss = bbox_dist + label_entropy
 
     mask = tf.cast(
-        tf.map_fn(hungarian_mask, bbox_dist, dtype=tf.int32), tf.float32)
+        tf.map_fn(hungarian_mask, combine_loss, dtype=tf.int32), tf.float32)
 
-    bbox_loss = tf.reduce_sum(tf.math.multiply(bbox_dist, mask), (1, 2))
-    label_loss = tf.reduce_sum(tf.math.multiply(lable_entropy, mask), (1, 2))
+    # bbox_loss = tf.reduce_sum(tf.math.multiply(bbox_dist, mask), (1, 2))
+    # label_loss = tf.reduce_sum(tf.math.multiply(label_entropy, mask), (1, 2))
 
-    return bbox_loss + label_loss
+    total_loss = tf.reduce_mean(tf.math.multiply(combine_loss, mask), (0, 1, 2))
+
+    return total_loss
 
 
 # def hungarian_dist_old(y_true, y_pred):

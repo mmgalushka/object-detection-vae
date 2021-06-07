@@ -19,28 +19,46 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras import Model
 
 from .layers import KLDivergence
+from .experiment import Experiment
+from .config import Config
+from .losses import total_dist
 
 
-def create_model(input_shape, latent_size):
+def create_model(config: Config, verbose: bool = False) -> Model:
+    input_shape = (config['input/image/width'], config['input/image/height'],
+                   config['input/image/channels'])
+    latent_size = config['fitting/model/latent_size']
+    num_detecting_objects = config['output/detecting/capacity']
+    num_detecting_categories = len(config['output/detecting/categories']) + 1
+
     encoder = DefaultEncoder(input_shape, latent_size)
-    encoder.summary()
     decoder = DefaultDecoder(input_shape, latent_size)
-    decoder.summary()
     sampler = KLSampler(code_size=latent_size, beta=0.01)
 
-    localizer = ObjectLocalizer(latent_size)
-    classifier = ObjectClassifier(latent_size)
+    localizer = ObjectLocalizer(latent_size, num_detecting_objects)
+    classifier = ObjectClassifier(latent_size, num_detecting_objects,
+                                  num_detecting_categories)
+
+    if verbose:
+        localizer.summary()
+        classifier.summary()
 
     auto_input = encoder.input
-    hidden = encoder(auto_input)
-    hidden = sampler(hidden)
-    auto_output = decoder(hidden)
-    bbox_output = localizer(hidden)
-    label_output = classifier(hidden)
+    x = encoder(auto_input)
+    x = sampler(x)
+    auto_output = decoder(x)
+    bbox_output = localizer(x)
+    label_output = classifier(x)
 
     combine_output = Concatenate(axis=2)([bbox_output, label_output])
 
-    return Model(auto_input, [auto_output, combine_output])
+    model = Model(auto_input, [auto_output, combine_output])
+    losses = {"DefaultDecoder": 'mae', "concatenate": total_dist}
+    lossWeights = {"DefaultDecoder": 1, "concatenate": 0.01}
+
+    model.compile(optimizer='adam', loss=losses, loss_weights=lossWeights)
+
+    return model
 
 
 class KLSampler(Model):
@@ -111,35 +129,6 @@ class DefaultEncoder(Model):
         logvar = Dense(latent_size, name='logvar_mean')(encoder)
         super().__init__(encoder_input, [mean, logvar], name='DefaultEncoder')
 
-        # encoder_conv_1 = Conv2D(
-        #     filters=8,
-        #     kernel_size=3,
-        #     strides=2,
-        #     padding='same',
-        #     activation='relu',
-        #     name='encoder_conv_1')
-        # encoder_conv_2 = Conv2D(
-        #     filters=16,
-        #     kernel_size=3,
-        #     strides=2,
-        #     padding='same',
-        #     activation='relu',
-        #     name='encoder_conv_2')
-        # encoder_flatten = Flatten(name='encoder_flatten')
-        # encoder_z_mean = Dense(
-        #     latent_size, activation='linear', name='encoder_z_mean')
-        # encoder_z_log_var = Dense(
-        #     latent_size, activation='linear', name='encoder_z_log_var')
-
-        # encoder_input = Input(shape=input_shape, name='encoder_input')
-        # hidden = encoder_conv_1(encoder_input)
-        # hidden = encoder_conv_2(hidden)
-        # hidden = encoder_flatten(hidden)
-        # z_mean = encoder_z_mean(hidden)
-        # z_log_var = encoder_z_log_var(hidden)
-
-        # super().__init__(encoder_input, [z_mean, z_log_var])
-
 
 class DefaultDecoder(Model):
 
@@ -180,79 +169,39 @@ class DefaultDecoder(Model):
             filters=input_shape[-1],
             kernel_size=(3, 3),
             strides=2,
-            activation=None,
+            activation='sigmoid',
             padding='same')(
                 decoder)
         super().__init__(decoder_input, decoder_output, name='DefaultDecoder')
 
-        # decoder_dense_latent = Dense(
-        #     64 * 8 * 8, activation='relu', name='decoder_latent')
-        # decoder_reshape = Reshape((8, 8, 64))
-
-        # decoder_conv_1 = Conv2DTranspose(
-        #     filters=64,
-        #     kernel_size=3,
-        #     strides=2,
-        #     padding='same',
-        #     activation='relu',
-        #     name='decoder_conv_1')
-        # decoder_conv_2 = Conv2DTranspose(
-        #     filters=32,
-        #     kernel_size=3,
-        #     strides=2,
-        #     padding='same',
-        #     activation='relu',
-        #     name='decoder_conv_2')
-        # decoder_conv_3 = Conv2DTranspose(
-        #     filters=16,
-        #     kernel_size=3,
-        #     strides=2,
-        #     padding='same',
-        #     activation='relu',
-        #     name='decoder_conv_3')
-        # decoder_output = Conv2DTranspose(
-        #     filters=3,  #channels,
-        #     kernel_size=3,
-        #     activation='sigmoid',
-        #     padding='same',
-        #     name='decoder_output')
-
-        # decoder_input = Input(shape=(latent_size,), name='decoder_input')
-        # hidden = decoder_dense_latent(decoder_input)
-        # hidden = decoder_reshape(hidden)
-        # hidden = decoder_conv_1(hidden)
-        # hidden = decoder_conv_2(hidden)
-        # hidden = decoder_conv_3(hidden)
-        # decoder_output = decoder_output(hidden)
-
-        # super().__init__(decoder_input, decoder_output)
-
 
 class ObjectLocalizer(Model):
 
-    def __init__(self, latent_size):
+    def __init__(self, latent_size: int, num_detecting_objects: int):
         super().__init__()
         local_input = Input(shape=(latent_size,), name='localizer_input')
         x = Dense(1024, activation='relu')(local_input)
         x = Dense(512, activation='relu')(x)
         x = Dense(128, activation='relu')(x)
-        x = Dense(100 * 4)(x)
-        local_output = Reshape((100, 4))(x)
+        # 4 is a number of parameters used to define the binding box.
+        x = Dense(num_detecting_objects * 4)(x)
+        local_output = Reshape((num_detecting_objects, 4))(x)
 
         super().__init__(local_input, local_output)
 
 
 class ObjectClassifier(Model):
 
-    def __init__(self, latent_size):
+    def __init__(self, latent_size: int, num_detecting_objects: int,
+                 num_detecting_categories: int):
         super().__init__()
 
         class_input = Input(shape=(latent_size,), name='classifier_input')
         x = Dense(1024, activation='relu')(class_input)
         x = Dense(512, activation='relu')(x)
         x = Dense(128, activation='relu')(x)
-        x = Dense(100 * 3)(x)
-        x = Reshape((100, 3))(x)
+        x = Dense(num_detecting_objects * num_detecting_categories)(x)
+        x = Reshape((num_detecting_objects, num_detecting_categories))(x)
         class_output = tf.keras.activations.softmax(x, axis=-1)
 
         super().__init__(class_input, class_output)

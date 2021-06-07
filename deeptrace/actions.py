@@ -2,12 +2,18 @@
 A module for handling user actions. 
 """
 
-from .models import create_model
-from .estimator import NUM_DETECTING_OBJECTS, BATCH_SIZE, EPOCHS, create_estimator
+import os
 
-from .image import IMAGE_CHANNELS, IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_CAPACITY, Palette, Background
+from .estimator import train as train_x
+from .estimator import predict as predict_x
+
+from .image import IMAGE_CAPACITY, Palette, Background
 from .dataset import DATASET_DIR, DATASET_SIZE, DataFormat, create_csv_dataset
 from .tfrecords import create_tfrecords
+from .experiment import create_experiment, get_experiment
+from .config import (create_config, save_config, IMAGE_CHANNELS, IMAGE_WIDTH,
+                     IMAGE_HEIGHT, TRAIN_DIR, VAL_DIR, DETECTING_CATEGORIES,
+                     NUM_DETECTING_OBJECTS, LATENT_SIZE, BATCH_SIZE, EPOCHS)
 
 
 def dataset(subparsers):
@@ -170,21 +176,20 @@ def tfrecords(subparsers):
 def train(subparsers):
 
     def run(args):
-        estimator = create_estimator(
-            input_shape=(args.image_width, args.image_height,
-                         args.image_channels),
-            latent_size=1024,
-            detecting_categories=args.detecting_categories)
-
-        estimator.train(
-            train_dir=args.train_dir,
-            val_dir=args.val_dir,
-            num_detecting_objects=args.num_detecting_objects,
-            batch_size=args.batch_size,
-            train_steps_per_epoch=args.train_steps_per_epoch,
-            val_steps_per_epoch=args.val_steps_per_epoch,
-            epochs=args.epochs,
-            verbose=args.verbose)
+        config = create_config(args.image_width, args.image_height,
+                               args.image_channels, args.train_dir,
+                               args.train_steps_per_epoch, args.val_dir,
+                               args.val_steps_per_epoch,
+                               args.num_detecting_objects,
+                               args.detecting_categories, args.latent_size,
+                               args.batch_size, args.epochs)
+        experiment = create_experiment(args.experiment_dir)
+        if experiment.config:
+            if args.retrain:
+                experiment.config = config
+        else:
+            experiment.config = config
+        train_x(experiment, args.verbose)
 
     # -----------------------------
     # Sets "train" command options
@@ -192,28 +197,15 @@ def train(subparsers):
     parser = subparsers.add_parser('train')
     parser.set_defaults(func=run)
 
-    # --- input options ---------------
     parser.add_argument(
-        '--train-dir',
-        metavar='DIR',
+        'experiment_dir',
+        metavar='EXPERIMENT_DIR',
         type=str,
-        required=True,
-        help=f'an input directory with training data')
-    parser.add_argument(
-        '--val-dir',
-        metavar='DIR',
-        type=str,
-        required=True,
-        help=f'an input directory with validation data')
-    parser.add_argument(
-        '--detecting-categories',
-        metavar='LABEL',
-        type=str,
-        nargs='+',
-        required=True,
-        help=f'a list of detecting categories')
+        nargs='?',
+        default=None,
+        help='an experiment directory')
 
-    # --- image options ---------------
+    # --- input options ---------------
     parser.add_argument(
         '--image-width',
         metavar='PIXELS',
@@ -235,20 +227,12 @@ def train(subparsers):
         default=IMAGE_CHANNELS,
         help=f'a number of image channels (default={IMAGE_CHANNELS})')
 
-    # --- training options ------------
     parser.add_argument(
-        '--num-detecting-objects',
-        metavar='NUMBER',
-        type=int,
-        default=NUM_DETECTING_OBJECTS,
-        help=f'a number of detecting objects per image (default={NUM_DETECTING_OBJECTS})'
-    )
-    parser.add_argument(
-        '--batch-size',
-        metavar='SIZE',
-        type=int,
-        default=BATCH_SIZE,
-        help=f'a batch size (default={BATCH_SIZE})')
+        '--train-dir',
+        metavar='DIR',
+        type=str,
+        default=TRAIN_DIR,
+        help=f'an input directory with training data (default={TRAIN_DIR})')
     parser.add_argument(
         '--train-steps-per-epoch',
         metavar='NUMBER',
@@ -256,11 +240,52 @@ def train(subparsers):
         default=0,
         help='a number of trining steps per epoch (default=0)')
     parser.add_argument(
+        '--val-dir',
+        metavar='DIR',
+        type=str,
+        default=VAL_DIR,
+        help=f'an input directory with validation data (default={VAL_DIR})')
+    parser.add_argument(
         '--val-steps-per-epoch',
         metavar='NUMBER',
         type=int,
         default=0,
         help='a number of validation steps per epoch (default=0)')
+
+    # --- output options ---------------
+    parser.add_argument(
+        '--detecting-categories',
+        metavar='LABEL',
+        type=str,
+        nargs='+',
+        default=DETECTING_CATEGORIES,
+        help=f'a list of detecting categories (default={DETECTING_CATEGORIES})')
+    parser.add_argument(
+        '--num-detecting-objects',
+        metavar='NUMBER',
+        type=int,
+        default=NUM_DETECTING_OBJECTS,
+        help=f'a number of detecting objects per image (default={NUM_DETECTING_OBJECTS})'
+    )
+
+    # --- training options ------------
+    parser.add_argument(
+        '-r',
+        '--retrain',
+        help='the flag forcing model to retrain',
+        action='store_true')
+    parser.add_argument(
+        '--latent-size',
+        metavar='SIZE',
+        type=int,
+        default=LATENT_SIZE,
+        help=f'a latent space size (default={LATENT_SIZE})')
+    parser.add_argument(
+        '--batch-size',
+        metavar='SIZE',
+        type=int,
+        default=BATCH_SIZE,
+        help=f'a batch size (default={BATCH_SIZE})')
     parser.add_argument(
         '--epochs',
         metavar='NUMBER',
@@ -279,13 +304,9 @@ def train(subparsers):
 def predict(subparsers):
 
     def run(args):
-
-        estimator = create_estimator(
-            input_shape=(64, 64, 3),
-            latent_size=1024,
-            detecting_categories=['rectangle', 'triangle'])
-
-        estimator.predict(args.input)
+        experiment = get_experiment(args.experiment_dir)
+        train_x(experiment, args.verbose)
+        predict_x(experiment, args.input, args.verbose)
 
     # -----------------------------
     # Sets "train" command options

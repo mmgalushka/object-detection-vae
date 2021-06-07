@@ -4,9 +4,11 @@ A module for converting a data source to TFRecords.
 from __future__ import annotations
 
 from os import X_OK
-import pathlib
+
 import json
 import glob
+from pathlib import Path
+
 from tensorflow.python.framework.ops import Tensor
 
 import yaml
@@ -31,7 +33,7 @@ def create_tfrecords(dataset_dir: str,
                      verbose: bool = False):
     # Gets input directory, containing dataset files that need to be
     # transformed to TFRecords.
-    input_dir = pathlib.Path(dataset_dir)
+    input_dir = Path(dataset_dir)
     if not input_dir.exists():
         raise FileExistsError(f'Input directory not found at: {input_dir}')
 
@@ -39,7 +41,7 @@ def create_tfrecords(dataset_dir: str,
     if tfrecords_dir is None:
         output_dir = input_dir.parent / (input_dir.name + '-tfrecords')
     else:
-        output_dir = pathlib.Path(tfrecords_dir)
+        output_dir = Path(tfrecords_dir)
     output_dir.mkdir(exist_ok=True)
 
     # Creates a map for mapping categories
@@ -56,14 +58,14 @@ def create_tfrecords(dataset_dir: str,
         raise ValueError('invalid ')
 
 
-def _csv_to_tfrecords(input_dir: pathlib.Path, output_dir: pathlib.Path,
-                      categories: list, tfrecords_size: int, image_width: int,
-                      image_height: int, verbose: bool):
+def _csv_to_tfrecords(input_dir: Path, output_dir: Path, categories: list,
+                      tfrecords_size: int, image_width: int, image_height: int,
+                      verbose: bool):
 
     # --- Internal function ----------------------------------------------------
     # The function receives a CSV row and converts it into an example.
     def get_example(row):
-        image_file = pathlib.Path(row['image'])
+        image_file = Path(row['image'])
         if image_file.is_absolute():
             fp = image_file
         else:
@@ -146,10 +148,10 @@ def _csv_to_tfrecords(input_dir: pathlib.Path, output_dir: pathlib.Path,
     # Processes all CSV files in the input directory.
     partitions = ['train', 'val', 'test']
     for partition in partitions:
-        transform_file(pathlib.Path(input_dir / f'{partition}.csv'))
+        transform_file(Path(input_dir / f'{partition}.csv'))
 
 
-def _image_feature(fp: pathlib.Path, width: int, height: int):
+def _image_feature(fp: Path, width: int, height: int):
     """Returns a bytes_list from a string / byte."""
     image = Image.open(fp)
     if isinstance(width, int) and isinstance(height, int):
@@ -217,7 +219,7 @@ def _categories_feature(categories: list):
     }
 
 
-def count_records(tfrecords_dir: pathlib.Path, verbose: bool) -> int:
+def count_records(tfrecords_dir: Path, verbose: bool) -> int:
     records_count = 0
 
     tfrecord_files = glob.glob(str(tfrecords_dir / 'part-*.tfrecord'))
@@ -236,10 +238,8 @@ def count_records(tfrecords_dir: pathlib.Path, verbose: bool) -> int:
     return records_count
 
 
-def create_generator(tfrecords_dir: pathlib.Path,
-                     detecting_categories: list,
-                     num_detecting_objects=100,
-                     batch_size=64):
+def create_generator(tfrecords_dir: Path, num_detecting_objects,
+                     detecting_categories: list, batch_size):
 
     def _parse_function(proto):
         keys_to_features = {
