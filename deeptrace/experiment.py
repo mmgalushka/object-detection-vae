@@ -3,6 +3,7 @@ A module for handling machine learning experiment.
 """
 
 from __future__ import annotations
+from typing import overload
 from deeptrace.tfrecords import count_records
 
 from enum import Enum
@@ -11,6 +12,7 @@ from pathlib import Path
 import yaml
 
 from .config import save_config, load_config, Config
+from .estimator import train, predict
 
 
 def create_experiment(directory: str = None) -> Experiment:
@@ -93,3 +95,19 @@ class Experiment:
         fp = self.directory / '.status'
         with fp.open('w') as f:
             f.write(str(value))
+
+    def train(self,
+              config: Config,
+              retrain: bool = False,
+              verbose: bool = False):
+        # Lets check and overwrite an experiment configuration in needed.
+        has_config = self.config is not None
+        if (has_config and retrain) or (not has_config):
+            self.config = config
+
+        # Runs training function defined in the estimator.
+        train(self, verbose)
+
+    def predict(self, image_file: str, verbose: bool = False):
+        # Runs prediction function defined in the estimator.
+        predict(self, image_file, verbose)

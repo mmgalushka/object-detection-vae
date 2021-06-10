@@ -19,7 +19,6 @@ import math
 from .tfrecords import create_generator, count_records
 from .models import create_model
 from .losses import hungarian_dist, total_dist
-from .experiment import Experiment
 
 
 def train(experiment, verbose: bool = False):
@@ -47,13 +46,13 @@ def train(experiment, verbose: bool = False):
     if train_steps == 0:
         train_steps = math.ceil(count_records(train_path, verbose) / batch_size)
 
-    val_path = Path(config['input/train/dir'])
+    val_path = Path(config['input/val/dir'])
     val_data = create_generator(
         tfrecords_dir=val_path,
         num_detecting_objects=config['output/detecting/capacity'],
         detecting_categories=config['output/detecting/categories'],
         batch_size=batch_size)
-    val_steps = config['input/train/steps']
+    val_steps = config['input/val/steps']
     # Counts the number of validation steps per epoch if it number
     # is not specified.
     if val_steps == 0:
@@ -85,9 +84,8 @@ def predict(experiment, image_file: str, verbose: bool = False):
     # print(array.shape)
 
     batch = model.predict(np.array([array]))
+
     output = Image.fromarray((batch[0][0] * 255).astype(np.uint8))
-    # print(batch[0])
-    # output = Image.fromarray((batch[0] * 255).astype(np.uint8))
 
     coordinates = batch[1][0]
     print('----->>>', len(coordinates))
@@ -100,12 +98,11 @@ def predict(experiment, image_file: str, verbose: bool = False):
         probas = [_, r, t]
         idx = np.argmax(probas)
         if idx > 0:
-            if probas[idx] > 0.8:
-                print('%.2f\t%.2f\t%.2f' % (_, r, t))
+            print('%.2f\t%.2f\t%.2f' % (_, r, t))
 
-                bbox = (x, y, x + w, y + h)
-                draw.rectangle(bbox, outline='red')
-                draw.text((x + 3, y), 'R' if r > t else 'T', 'red', font=font)
+            bbox = (x, y, x + w, y + h)
+            draw.rectangle(bbox, outline='red')
+            draw.text((x + 3, y), 'R' if r > t else 'T', 'red', font=font)
     output.save('output.jpg', 'JPEG', quality=100, subsampling=0)
 
     draw1 = ImageDraw.Draw(image)

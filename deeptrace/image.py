@@ -233,7 +233,9 @@ def create_synthetic_image(image_width: int, image_height: int,
     # Creates synthetic image od appropriate capacity
     shapes = []
     colors = list(range(25, 255, 25))
-    for _ in range(image_capacity):
+
+    n = np.random.randint(1, image_capacity + 1)
+    for _ in range(n):
         # Picks a random shape.
         shape = np.random.choice([Rectangle, Triangle])
 

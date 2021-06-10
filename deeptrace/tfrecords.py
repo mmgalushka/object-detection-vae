@@ -18,6 +18,7 @@ import pandas as pd
 from tqdm import tqdm
 from PIL import Image
 
+from .config import BATCH_SIZE
 from .dataset import DataFormat
 
 tf.compat.v1.enable_eager_execution()
@@ -238,8 +239,10 @@ def count_records(tfrecords_dir: Path, verbose: bool) -> int:
     return records_count
 
 
-def create_generator(tfrecords_dir: Path, num_detecting_objects,
-                     detecting_categories: list, batch_size):
+def create_generator(tfrecords_dir: Path,
+                     num_detecting_objects,
+                     detecting_categories: list,
+                     batch_size: int = BATCH_SIZE):
 
     def _parse_function(proto):
         keys_to_features = {

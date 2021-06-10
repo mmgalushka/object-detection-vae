@@ -19,7 +19,6 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras import Model
 
 from .layers import KLDivergence
-from .experiment import Experiment
 from .config import Config
 from .losses import total_dist
 
@@ -53,8 +52,8 @@ def create_model(config: Config, verbose: bool = False) -> Model:
     combine_output = Concatenate(axis=2)([bbox_output, label_output])
 
     model = Model(auto_input, [auto_output, combine_output])
-    losses = {"DefaultDecoder": 'mae', "concatenate": total_dist}
-    lossWeights = {"DefaultDecoder": 1, "concatenate": 0.01}
+    losses = {"DefaultDecoder": 'bce', "concatenate": total_dist}
+    lossWeights = {"DefaultDecoder": 1, "concatenate": 1}
 
     model.compile(optimizer='adam', loss=losses, loss_weights=lossWeights)
 
@@ -180,7 +179,8 @@ class ObjectLocalizer(Model):
     def __init__(self, latent_size: int, num_detecting_objects: int):
         super().__init__()
         local_input = Input(shape=(latent_size,), name='localizer_input')
-        x = Dense(1024, activation='relu')(local_input)
+        x_stop_grad = Lambda(lambda x: K.stop_gradient(x))(local_input)
+        x = Dense(1024, activation='relu')(x_stop_grad)
         x = Dense(512, activation='relu')(x)
         x = Dense(128, activation='relu')(x)
         # 4 is a number of parameters used to define the binding box.
@@ -197,7 +197,8 @@ class ObjectClassifier(Model):
         super().__init__()
 
         class_input = Input(shape=(latent_size,), name='classifier_input')
-        x = Dense(1024, activation='relu')(class_input)
+        x_stop_grad = Lambda(lambda x: K.stop_gradient(x))(class_input)
+        x = Dense(1024, activation='relu')(x_stop_grad)
         x = Dense(512, activation='relu')(x)
         x = Dense(128, activation='relu')(x)
         x = Dense(num_detecting_objects * num_detecting_categories)(x)

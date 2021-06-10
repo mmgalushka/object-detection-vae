@@ -4,15 +4,12 @@ A module for handling user actions.
 
 import os
 
-from .estimator import train as train_x
-from .estimator import predict as predict_x
-
 from .image import IMAGE_CAPACITY, Palette, Background
 from .dataset import DATASET_DIR, DATASET_SIZE, DataFormat, create_csv_dataset
 from .tfrecords import create_tfrecords
 from .experiment import create_experiment, get_experiment
-from .config import (create_config, save_config, IMAGE_CHANNELS, IMAGE_WIDTH,
-                     IMAGE_HEIGHT, TRAIN_DIR, VAL_DIR, DETECTING_CATEGORIES,
+from .config import (create_config, IMAGE_CHANNELS, IMAGE_WIDTH, IMAGE_HEIGHT,
+                     TRAIN_DIR, VAL_DIR, DETECTING_CATEGORIES,
                      NUM_DETECTING_OBJECTS, LATENT_SIZE, BATCH_SIZE, EPOCHS)
 
 
@@ -184,12 +181,7 @@ def train(subparsers):
                                args.detecting_categories, args.latent_size,
                                args.batch_size, args.epochs)
         experiment = create_experiment(args.experiment_dir)
-        if experiment.config:
-            if args.retrain:
-                experiment.config = config
-        else:
-            experiment.config = config
-        train_x(experiment, args.verbose)
+        experiment.train(config, args.retrain, args.verbose)
 
     # -----------------------------
     # Sets "train" command options
@@ -305,14 +297,21 @@ def predict(subparsers):
 
     def run(args):
         experiment = get_experiment(args.experiment_dir)
-        train_x(experiment, args.verbose)
-        predict_x(experiment, args.input, args.verbose)
+        experiment.predict(args.input, args.verbose)
 
     # -----------------------------
     # Sets "train" command options
     # -----------------------------
     parser = subparsers.add_parser('predict')
     parser.set_defaults(func=run)
+
+    parser.add_argument(
+        'experiment_dir',
+        metavar='EXPERIMENT_DIR',
+        type=str,
+        nargs='?',
+        default=None,
+        help='an experiment directory')
 
     parser.add_argument(
         '-i', '--input', metavar='FILE', type=str, help='an input directory')
