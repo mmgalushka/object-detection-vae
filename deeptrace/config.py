@@ -3,8 +3,15 @@ A module for handling configuration.
 """
 
 from pathlib import Path
+from logging import getLogger
 
 import yaml
+
+from rich import box
+from rich.console import Console
+from rich.table import Table
+
+LOG = getLogger(__name__)
 
 IMAGE_WIDTH = 64
 """A default image width."""
@@ -155,6 +162,8 @@ def create_config(image_width: int = IMAGE_WIDTH,
             'epochs': epochs
         }
     }
+
+    LOG.debug('Created training configuration: %s;', source)
     return Config(source)
 
 

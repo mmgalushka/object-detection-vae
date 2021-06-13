@@ -7,3 +7,4 @@ __version__ = '1.0.0-alpha'
 from .actions import *  # NOQA
 from .dataset import *  # NOQA
 from .image import *  # NOQA
+from .logger import *  # NOQA

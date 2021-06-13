@@ -4,6 +4,7 @@ A module for orchestrating model training and prediction.
 
 import math
 from pathlib import Path
+from logging import getLogger
 
 import tensorflow as tf
 from tensorflow.keras import callbacks
@@ -16,17 +17,20 @@ import PIL.ImageDraw as ImageDraw
 import PIL.ImageFont as ImageFont
 import math
 
-from .tfrecords import create_generator, count_records
-from .models import create_model
+from .tfrecords import create_generator
 from .losses import hungarian_dist, total_dist
+
+LOG = getLogger(__name__)
 
 
 def train(experiment, verbose: bool = False):
+    LOG.info('Started model training;')
+
     config = experiment.config
     model = create_model(config, verbose)
 
     checkpoint = ModelCheckpoint(
-        str(experiment.directory / 'model.h5'),
+        str(experiment.path / 'model.h5'),
         save_best_only=True,
         monitor='val_loss',
         mode='min',
@@ -34,39 +38,46 @@ def train(experiment, verbose: bool = False):
 
     batch_size = config['fitting/batch/size']
 
+    # Creates generators for loading training and validation data.
     train_path = Path(config['input/train/dir'])
     train_data = create_generator(
         tfrecords_dir=train_path,
-        num_detecting_objects=config['output/detecting/capacity'],
         detecting_categories=config['output/detecting/categories'],
-        batch_size=batch_size)
+        num_detecting_objects=config['output/detecting/capacity'],
+        batch_size=batch_size,
+        name="Training Data Generator",
+        verbose=verbose)
+    val_path = Path(config['input/val/dir'])
+    val_data = create_generator(
+        tfrecords_dir=val_path,
+        detecting_categories=config['output/detecting/categories'],
+        num_detecting_objects=config['output/detecting/capacity'],
+        batch_size=batch_size,
+        name="Validation Data Generator",
+        verbose=verbose)
+
     train_steps = config['input/train/steps']
     # Counts the number of training steps per epoch if it number
     # is not specified.
     if train_steps == 0:
         train_steps = math.ceil(count_records(train_path, verbose) / batch_size)
 
-    val_path = Path(config['input/val/dir'])
-    val_data = create_generator(
-        tfrecords_dir=val_path,
-        num_detecting_objects=config['output/detecting/capacity'],
-        detecting_categories=config['output/detecting/categories'],
-        batch_size=batch_size)
     val_steps = config['input/val/steps']
     # Counts the number of validation steps per epoch if it number
     # is not specified.
     if val_steps == 0:
         val_steps = math.ceil(count_records(val_path, verbose) / batch_size)
 
-    model.fit(
-        train_data,
-        steps_per_epoch=train_steps,
-        epochs=config['fitting/epochs'],
-        validation_data=val_data,
-        validation_steps=val_steps,
-        workers=4,
-        verbose=int(verbose),
-        callbacks=[checkpoint])
+    # model.fit(
+    #     train_data,
+    #     steps_per_epoch=train_steps,
+    #     epochs=config['fitting/epochs'],
+    #     validation_data=val_data,
+    #     validation_steps=val_steps,
+    #     workers=4,
+    #     verbose=int(verbose),
+    #     callbacks=[checkpoint])
+    LOG.info('Completed model training;')
 
 
 def predict(experiment, image_file: str, verbose: bool = False):

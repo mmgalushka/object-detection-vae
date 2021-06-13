@@ -95,7 +95,11 @@ action_predict(){
 action_install(){
     source .venv/bin/activate
     pip install ${@}
-    # mkdocs serve
+}
+
+action_mkdocs(){
+    source .venv/bin/activate
+    mkdocs serve
 }
 
 action_build(){
@@ -140,6 +144,9 @@ case $1 in
     ;;
     install)
         action_install ${@:2}
+    ;;
+    mkdocs)
+        action_mkdocs ${@:2}
     ;;
     *)
         action_usage

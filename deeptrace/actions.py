@@ -2,20 +2,28 @@
 A module for handling user actions. 
 """
 
+from datetime import time
 import os
+import logging
 
 from .image import IMAGE_CAPACITY, Palette, Background
 from .dataset import DATASET_DIR, DATASET_SIZE, DataFormat, create_csv_dataset
 from .tfrecords import create_tfrecords
-from .experiment import create_experiment, get_experiment
+from .experiment import make_experiment
 from .config import (create_config, IMAGE_CHANNELS, IMAGE_WIDTH, IMAGE_HEIGHT,
                      TRAIN_DIR, VAL_DIR, DETECTING_CATEGORIES,
                      NUM_DETECTING_OBJECTS, LATENT_SIZE, BATCH_SIZE, EPOCHS)
+from .logger import timeit
+
+LOG = logging.getLogger(__name__)
 
 
 def dataset(subparsers):
+    # Defines the command name.
+    cmd = 'dataset'
 
     def run(args):
+        LOG.info('Called command: %s;', cmd)
         create_csv_dataset(
             dataset_dir=args.output,
             dataset_size=args.size,
@@ -28,9 +36,10 @@ def dataset(subparsers):
 
     # ---------------------------------
     # Sets "dataset" command options
-    # ---------------------------------
-    parser = subparsers.add_parser('dataset')
+    # --------------------------------=
+    parser = subparsers.add_parser(cmd)
     parser.set_defaults(func=run)
+    LOG.info('Registered command: %s;', cmd)
 
     # --- I/O options -----------------
     parser.add_argument(
@@ -98,8 +107,11 @@ def dataset(subparsers):
 
 
 def tfrecords(subparsers):
+    # Defines the command name.
+    cmd = 'tfrecords'
 
     def run(args):
+        LOG.info('Called command: %s;', cmd)
         create_tfrecords(
             dataset_dir=args.input,
             dataset_format=args.format,
@@ -113,8 +125,9 @@ def tfrecords(subparsers):
     # ---------------------------------
     # Sets "tfrecords" command options
     # ---------------------------------
-    parser = subparsers.add_parser('tfrecords')
+    parser = subparsers.add_parser(cmd)
     parser.set_defaults(func=run)
+    LOG.info('Registered command: %s;', cmd)
 
     # --- input options ---------------
     parser.add_argument(
@@ -171,8 +184,11 @@ def tfrecords(subparsers):
 
 
 def train(subparsers):
+    # Defines the command name.
+    cmd = 'train'
 
     def run(args):
+        LOG.info('Called command: %s;', cmd)
         config = create_config(args.image_width, args.image_height,
                                args.image_channels, args.train_dir,
                                args.train_steps_per_epoch, args.val_dir,
@@ -180,14 +196,15 @@ def train(subparsers):
                                args.num_detecting_objects,
                                args.detecting_categories, args.latent_size,
                                args.batch_size, args.epochs)
-        experiment = create_experiment(args.experiment_dir)
+        experiment = make_experiment(args.experiment_dir)
         experiment.train(config, args.retrain, args.verbose)
 
     # -----------------------------
     # Sets "train" command options
     # -----------------------------
-    parser = subparsers.add_parser('train')
+    parser = subparsers.add_parser(cmd)
     parser.set_defaults(func=run)
+    LOG.info('Registered command: %s;', cmd)
 
     parser.add_argument(
         'experiment_dir',
@@ -294,16 +311,20 @@ def train(subparsers):
 
 
 def predict(subparsers):
+    # Defines the command name.
+    cmd = 'predict'
 
     def run(args):
-        experiment = get_experiment(args.experiment_dir)
+        LOG.info('Called command: %s;', cmd)
+        experiment = make_experiment(args.experiment_dir, must_exist=True)
         experiment.predict(args.input, args.verbose)
 
     # -----------------------------
     # Sets "train" command options
     # -----------------------------
-    parser = subparsers.add_parser('predict')
+    parser = subparsers.add_parser(cmd)
     parser.set_defaults(func=run)
+    LOG.info('Registered command: %s;', cmd)
 
     parser.add_argument(
         'experiment_dir',

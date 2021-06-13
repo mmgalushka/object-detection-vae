@@ -8,6 +8,8 @@ from os import X_OK
 import json
 import glob
 from pathlib import Path
+from logging import getLogger
+from math import ceil
 
 from tensorflow.python.framework.ops import Tensor
 
@@ -18,8 +20,10 @@ import pandas as pd
 from tqdm import tqdm
 from PIL import Image
 
-from .config import BATCH_SIZE
+from .config import NUM_DETECTING_OBJECTS, BATCH_SIZE
 from .dataset import DataFormat
+
+LOG = getLogger(__name__)
 
 tf.compat.v1.enable_eager_execution()
 
@@ -220,31 +224,21 @@ def _categories_feature(categories: list):
     }
 
 
-def count_records(tfrecords_dir: Path, verbose: bool) -> int:
-    records_count = 0
-
-    tfrecord_files = glob.glob(str(tfrecords_dir / 'part-*.tfrecord'))
-
-    # Initializes the progress bar of verbose mode is on.
-    if verbose:
-        pbar = tqdm(total=len(tfrecord_files))
-
-    for tfrecord_files in tfrecord_files:
-        # Counts number of record per TFRecords file.
-        records_count += sum(1 for _ in tf.data.TFRecordDataset(tfrecord_files))
-        # Updates the progress bar of verbose mode is on.
-        if verbose:
-            pbar.update(1)
-
-    return records_count
+# ------------------------------------------------------------------------------
+#
+#    D A T A    G E N E R A T O R
+#
+# ------------------------------------------------------------------------------
 
 
-def create_generator(tfrecords_dir: Path,
-                     num_detecting_objects,
+def create_generator(tfrecords_path: Path,
                      detecting_categories: list,
-                     batch_size: int = BATCH_SIZE):
+                     num_detecting_objects: int = NUM_DETECTING_OBJECTS,
+                     batch_size: int = BATCH_SIZE,
+                     steps_per_epoch=0,
+                     verbose: bool = False):
 
-    def _parse_function(proto):
+    def record_parser(proto):
         keys_to_features = {
             'image/shape':
                 tf.io.FixedLenSequenceFeature([], tf.int64, allow_missing=True),
@@ -262,37 +256,76 @@ def create_generator(tfrecords_dir: Path,
         }
         parsed_features = tf.io.parse_single_example(proto, keys_to_features)
 
-        X = tf.io.decode_raw(parsed_features['image/content'], tf.uint8)
-        X = tf.reshape(X, parsed_features['image/shape'])
-        X = tf.cast(X, tf.float32) / 255.0
+        # Gets data artefacts.
+        image = _feature_to_image(parsed_features)
+        bboxes = _feature_to_bboxes(parsed_features, num_detecting_objects)
+        categories = _feature_to_categories(parsed_features,
+                                            detecting_categories,
+                                            num_detecting_objects)
 
-        bboxes = feature_to_bboxes(parsed_features, num_detecting_objects)
-        categories = feature_to_categories(parsed_features,
-                                           detecting_categories,
-                                           num_detecting_objects)
+        # Assembling the model input (X) and output (y).
+        X = image
         y = tf.concat([bboxes, categories], axis=1)
-
         return X, (X, y)
 
-    tfrecord_files = glob.glob(str(tfrecords_dir / 'part-*.tfrecord'))
+    # Selects all TFRecord files stored in the specified directory.
+    tfrecord_files = glob.glob(str(tfrecords_path / 'part-*.tfrecord'))
+    LOG.debug('The "%s" directory contains: %d partitions;', tfrecords_path,
+              len(tfrecord_files))
 
+    # --- Create Data Generator ---
     AUTOTUNE = tf.data.experimental.AUTOTUNE
-
     dataset = tf.data.TFRecordDataset(tfrecord_files)
-    dataset = dataset.map(_parse_function, num_parallel_calls=AUTOTUNE)
+    dataset = dataset.map(record_parser, num_parallel_calls=AUTOTUNE)
     dataset = dataset.repeat()
     dataset = dataset.shuffle(2048)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     dataset = dataset.batch(batch_size)
 
-    return dataset
+    LOG.info('Created data generator for the data source: %s;', tfrecords_path)
+
+    # --- Define Steps Per Epoch ---
+    if steps_per_epoch == 0:
+        # If training steps per epoch have set to 0, it needs to be
+        # computed.
+        LOG.debug('The number of steps per epoch needs to be computed '
+                  '(it may take some time)')
+
+        # Starts counting the total number of TFREcords in all partitions.
+        if verbose:
+            pbar = tqdm(total=len(tfrecord_files))
+        records_count = 0
+        for tfrecord_files in tfrecord_files:
+            records_count += sum(
+                1 for _ in tf.data.TFRecordDataset(tfrecord_files))
+            if verbose:
+                pbar.update(1)
+        LOG.debug("The counted total number of records: %d;", records_count)
+
+        # Computes a number of steps per epoch by dividing a number of
+        # records by the batch size.
+        steps_per_epoch = ceil(records_count / batch_size)
+
+        LOG.info('Computed the number of steps per epoch: %d;', steps_per_epoch)
+    else:
+        LOG.info('Selected the number of steps per epoch: %d;', steps_per_epoch)
+
+    return dataset, steps_per_epoch
 
 
-def feature_to_bboxes(parsed_features, num_detecting_objects: int) -> tf.Tensor:
+def _feature_to_image(parsed_features: dict) -> tf.Tensor:
+    image = tf.io.decode_raw(parsed_features['image/content'], tf.uint8)
+    image = tf.reshape(image, parsed_features['image/shape'])
+    image = tf.cast(image, tf.float32) / 255.0
+    return image
+
+
+def _feature_to_bboxes(parsed_features,
+                       num_detecting_objects: int) -> tf.Tensor:
     # Loads all binding boxes defined in a TFRecord.
 
     n = parsed_features['bboxes/number'][0]
-    # 2
+    # let's assume it is 2
 
     bboxes = parsed_features['bboxes/data']
     bboxes = tf.reshape(bboxes, (-1, 4))
@@ -323,12 +356,12 @@ def feature_to_bboxes(parsed_features, num_detecting_objects: int) -> tf.Tensor:
     return bboxes
 
 
-def feature_to_categories(parsed_features, detecting_categories: list,
-                          num_detecting_objects: int) -> tf.Tensor:
+def _feature_to_categories(parsed_features: dict, detecting_categories: list,
+                           num_detecting_objects: int) -> tf.Tensor:
     # Loads all categories values defined in a TFRecord.
 
     n = parsed_features['categories/number'][0]
-    # 2
+    # lets assume it is 2
 
     categories = parsed_features['categories/data']
     # [b'rectangle' b'triangle'], shape=(4,), dtype=string

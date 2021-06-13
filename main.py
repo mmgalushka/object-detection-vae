@@ -3,23 +3,33 @@ The DeepTrace main module.
 """
 
 import os
+
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
 import sys
 import argparse
+import logging
 
+import tensorflow as tf
 import deeptrace as dt
+
+import warnings
+
+warnings.filterwarnings("ignore")
+tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+
+dt.setup_logging()
+LOG = logging.getLogger(__name__)
+LOG.info('The application logger has been configured;')
 
 parser = argparse.ArgumentParser(prog='./helper.sh', usage='%(prog)s')
 subparsers = parser.add_subparsers()
 
-# --------------------------------------
-# Initializes dataset handling commands
-# --------------------------------------
+# ---------------------------------
+# Initializes application commands
+# ---------------------------------
 dt.dataset(subparsers)
 dt.tfrecords(subparsers)
-
-# --------------------------------------
-# Initializes ML handling commands
-# --------------------------------------
 dt.train(subparsers)
 dt.predict(subparsers)
 
