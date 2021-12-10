@@ -193,14 +193,14 @@ class Experiment:
             LOG.info('Saved a new experiment configuration;')
 
         # Lets check and the experiment status.
-        if self.status > ExperimentStatus.INPROGRESS:
+        # if self.status > ExperimentStatus.INPROGRESS:
             # Any experiment status above the in-progress indicates the
             # raining of the associate machine learning model has completed
             # (successfully or unsuccessfully). In this case, we need to
             # terminate this function.
-            LOG.info('The experiment has been completed, with status: %s',
-                     self.status)
-            return
+            # LOG.info('The experiment has been completed, with status: %s',
+                    #  self.status)
+            # return
             # Note: If a user wants to rerun a model training under this
             # experiment, it will require to set
             # "re-train" option/flag.

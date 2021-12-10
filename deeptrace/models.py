@@ -7,7 +7,7 @@ import sys
 import tensorflow as tf
 from tensorflow.python.eager.def_function import run_functions_eagerly
 from tensorflow.python.keras.engine.base_layer import Layer
-from tensorflow.python.keras.losses import KLDivergence
+from tensorflow.python.keras.losses import KLDivergence, mse, categorical_crossentropy
 import tensorflow_addons as tfa
 import numpy as np
 import tensorflow.keras.backend as K
@@ -21,6 +21,11 @@ from tensorflow.keras import Model
 from .layers import KLDivergence
 from .config import Config
 from .losses import total_dist
+
+from hungarian_loss import hungarian_loss
+from hungarian_loss.loss import HungarianLoss
+from hungarian_loss.steps import compute_euclidean_distance
+
 
 
 def create_model(config: Config, verbose: bool = False) -> Model:
@@ -38,9 +43,11 @@ def create_model(config: Config, verbose: bool = False) -> Model:
     classifier = ObjectClassifier(latent_size, num_detecting_objects,
                                   num_detecting_categories)
 
-    if verbose:
-        localizer.summary()
-        classifier.summary()
+    # if verbose:
+    #     encoder.summary()
+    #     decoder.summary()
+    #     localizer.summary()
+    #     classifier.summary()
 
     auto_input = encoder.input
     x = encoder(auto_input)
@@ -52,10 +59,23 @@ def create_model(config: Config, verbose: bool = False) -> Model:
     combine_output = Concatenate(axis=2)([bbox_output, label_output])
 
     model = Model(auto_input, [auto_output, combine_output])
-    losses = {"DefaultDecoder": 'bce', "concatenate": total_dist}
-    lossWeights = {"DefaultDecoder": 1, "concatenate": 1}
+    model.summary()
 
-    model.compile(optimizer='adam', loss=losses, loss_weights=lossWeights)
+    xxx = HungarianLoss(
+        slice_sizes=[4,3],
+        slice_index_to_compute_assignment=0,
+        compute_cost_matrix_fn = compute_euclidean_distance,
+        slice_losses_fn=[mse, categorical_crossentropy],
+        slice_weights=[0.01, 0.1],
+    )    
+
+    losses = {
+        "DefaultDecoder": binary_crossentropy,
+        "concatenate": xxx
+    }
+    lossWeights = {"DefaultDecoder": 1, "concatenate": 0.1}
+
+    model.compile(optimizer='adam', loss=losses, loss_weights=lossWeights, run_eagerly=False)
 
     return model
 
@@ -179,10 +199,10 @@ class ObjectLocalizer(Model):
     def __init__(self, latent_size: int, num_detecting_objects: int):
         super().__init__()
         local_input = Input(shape=(latent_size,), name='localizer_input')
-        x_stop_grad = Lambda(lambda x: K.stop_gradient(x))(local_input)
-        x = Dense(1024, activation='relu')(x_stop_grad)
-        x = Dense(512, activation='relu')(x)
-        x = Dense(128, activation='relu')(x)
+        # x_stop_grad = Lambda(lambda x: K.stop_gradient(x))(local_input)
+        x = Dense(1024, activation='relu', kernel_initializer='random_normal',bias_initializer='zeros')(local_input)
+        x = Dense(512, activation='relu', kernel_initializer='random_normal',bias_initializer='zeros')(x)
+        x = Dense(128, activation='relu', kernel_initializer='random_normal',bias_initializer='zeros')(x)
         # 4 is a number of parameters used to define the binding box.
         x = Dense(num_detecting_objects * 4)(x)
         local_output = Reshape((num_detecting_objects, 4))(x)
@@ -197,10 +217,10 @@ class ObjectClassifier(Model):
         super().__init__()
 
         class_input = Input(shape=(latent_size,), name='classifier_input')
-        x_stop_grad = Lambda(lambda x: K.stop_gradient(x))(class_input)
-        x = Dense(1024, activation='relu')(x_stop_grad)
-        x = Dense(512, activation='relu')(x)
-        x = Dense(128, activation='relu')(x)
+        # x_stop_grad = Lambda(lambda x: K.stop_gradient(x))(class_input)
+        x = Dense(1024, activation='relu', kernel_initializer='random_normal',bias_initializer='zeros')(class_input)
+        x = Dense(512, activation='relu', kernel_initializer='random_normal',bias_initializer='zeros')(x)
+        x = Dense(128, activation='relu', kernel_initializer='random_normal',bias_initializer='zeros')(x)
         x = Dense(num_detecting_objects * num_detecting_categories)(x)
         x = Reshape((num_detecting_objects, num_detecting_categories))(x)
         class_output = tf.keras.activations.softmax(x, axis=-1)

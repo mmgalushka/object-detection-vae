@@ -2,9 +2,10 @@
 A module for handling custom model layers. 
 """
 
+import tensorflow as tf
 from tensorflow.python.keras.engine.base_layer import Layer
 import tensorflow.keras.backend as K
-
+from hungarian_loss import hungarian_loss
 
 class KLDivergence(Layer):
 
@@ -47,3 +48,25 @@ class KLDivergence(Layer):
 
     def compute_output_shape(self, input_shape):
         return input_shape[0]
+
+
+
+
+class EntitiesAssignment(Layer):
+    def __init__(self):
+        super(EntitiesAssignment, self).__init__()
+
+    def call(self, inputs):
+        return hungarian_loss(inputs[0], inputs[1])
+
+
+class EntitiesRearrangement(Layer):
+    def __init__(self):
+        super(EntitiesRearrangement, self).__init__()
+
+    def call(self, inputs):
+        entities = inputs[0]
+        assignments = inputs[1]
+
+        order = tf.gather(tf.where(assignments), indices=[0,2], axis=1)
+        return tf.reshape(tf.gather_nd(entities, order), entities.shape)

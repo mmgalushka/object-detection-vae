@@ -4,7 +4,7 @@ The DeepTrace main module.
 
 import os
 
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+# os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 import sys
 import argparse
@@ -15,8 +15,8 @@ import deeptrace as dt
 
 import warnings
 
-warnings.filterwarnings("ignore")
-tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+# warnings.filterwarnings("ignore")
+# tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
 dt.setup_logging()
 LOG = logging.getLogger(__name__)

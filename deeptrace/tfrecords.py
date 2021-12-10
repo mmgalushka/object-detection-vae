@@ -25,7 +25,7 @@ from .dataset import DataFormat
 
 LOG = getLogger(__name__)
 
-tf.compat.v1.enable_eager_execution()
+# tf.compat.v1.enable_eager_execution()
 
 
 def create_tfrecords(dataset_dir: str,
@@ -261,11 +261,12 @@ def create_generator(tfrecords_path: Path,
         bboxes = _feature_to_bboxes(parsed_features, num_detecting_objects)
         categories = _feature_to_categories(parsed_features,
                                             detecting_categories,
-                                            num_detecting_objects)
+                                            num_detecting_objects)                              
 
         # Assembling the model input (X) and output (y).
         X = image
         y = tf.concat([bboxes, categories], axis=1)
+
         return X, (X, y)
 
     # Selects all TFRecord files stored in the specified directory.
@@ -366,18 +367,22 @@ def _feature_to_categories(parsed_features: dict, detecting_categories: list,
     categories = parsed_features['categories/data']
     # [b'rectangle' b'triangle'], shape=(4,), dtype=string
 
-    if n < num_detecting_objects:
-        # If the obtained number of record categories less than the
-        # detection capacity, then the categories list must be padded with
-        # "unknown category".
-        categories = tf.pad(
-            categories, [[0, num_detecting_objects - n]],
-            constant_values='[UNK]')
-        # [b'rectangle' b'triangle' b'[UNK]' b'[UNK]'], shape=(4,), dtype=string
-    elif n > num_detecting_objects:
-        # If the obtained number of record categories greater than the
-        # detection capacity, then the categories list must be sliced.
-        categories = tf.slice(categories, [0], [num_detecting_objects])
+    # if n < num_detecting_objects:
+    #     # If the obtained number of record categories less than the
+    #     # detection capacity, then the categories list must be padded with
+    #     # "unknown category".
+    #     categories = tf.pad(
+    #         categories, [[0, num_detecting_objects - n]],
+    #         constant_values='[UNK]')
+    #     # [b'rectangle' b'triangle' b'[UNK]' b'[UNK]'], shape=(4,), dtype=string
+    # elif n > num_detecting_objects:
+    #     # If the obtained number of record categories greater than the
+    #     # detection capacity, then the categories list must be sliced.
+    #     categories = tf.slice(categories, [0], [num_detecting_objects])
+
+    categories = tf.pad(
+        categories, [[0, num_detecting_objects - n]],
+        constant_values='[UNK]')
 
     categories = tf.keras.layers.experimental.preprocessing.StringLookup(
         vocabulary=detecting_categories)(

@@ -31,20 +31,27 @@ action_usage(){
 }
 
 action_init(){
-    if [ -d .venv ];
-        then
-            rm -r .venv
-    fi
+    # if [ -d .venv ];
+    #     then
+    #         rm -r .venv
+    # fi
 
-    python3 -m venv .venv
-    source .venv/bin/activate
+    # python3 -m venv .venv
+    source .venv/bin/activate 
 
-    if [[ -f dependencies.txt ]]
-    then
-        pip3 install -r dependencies.txt
-    else
-        pip3 install -r requirements.txt
-    fi
+
+    # if [[ -f dependencies.txt ]]
+    # then
+    #     pip3 install -r dependencies.txt --no-cache
+    # else
+    #     pip3 install -r requirements.txt --no-cache
+    # fi
+    # pip3 install rich
+    # pip3 install -i https://test.pypi.org/simple/ hungarian-loss
+    # pip3 install ../hungarian-loss/dist/hungarian_loss-1.0.1.dev0+g942dbfe.d20211122-py3-none-any.whl
+    # pip3 install tensorflow-addons==0.14.0
+    # pip install ../hungarian-loss/dist/hungarian_loss-0.1.dev30+g61d4093.d20211204-py3-none-any.whl
+    pip install hungarian-loss
 }
 
 action_test(){

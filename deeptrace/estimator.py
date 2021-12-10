@@ -19,9 +19,8 @@ import math
 
 from .tfrecords import create_generator
 from .losses import hungarian_dist, total_dist
-
+from .models import create_model
 LOG = getLogger(__name__)
-
 
 def train(experiment, verbose: bool = False):
     LOG.info('Started model training;')
@@ -88,7 +87,7 @@ def predict(experiment, image_file: str, verbose: bool = False):
     model = create_model(config)
     if verbose:
         model.summary()
-    model.load_weights('model.h5')
+    model.load_weights(experiment.path / 'model.h5')
 
     image = Image.open(image_file)
     array = np.array(image) * (1. / 255)
@@ -107,20 +106,17 @@ def predict(experiment, image_file: str, verbose: bool = False):
     draw = ImageDraw.Draw(output)
     for (x, y, w, h, _, r, t) in coordinates:
         probas = [_, r, t]
-        idx = np.argmax(probas)
-        if idx > 0:
-            print('%.2f\t%.2f\t%.2f' % (_, r, t))
 
-            bbox = (x, y, x + w, y + h)
-            draw.rectangle(bbox, outline='red')
-            draw.text((x + 3, y), 'R' if r > t else 'T', 'red', font=font)
+        print('%.2f\t%.2f\t%.2f' % (_, r, t))
+
+        bbox = (x , y, (x + w), (y + h)) 
+        draw.rectangle(bbox, outline='red')
+        draw.text(((x)  + 3, y ), 'R' if r > t else 'T', 'red', font=font)
     output.save('output.jpg', 'JPEG', quality=100, subsampling=0)
 
     draw1 = ImageDraw.Draw(image)
     for (x, y, w, h, _, r, t) in coordinates:
-        idx = np.argmax([_, r, t])
-        if idx > 0:
-            bbox = (x, y, x + w, y + h)
-            draw1.rectangle(bbox, outline='red')
-            draw1.text((x + 3, y), 'R' if r > t else 'T', 'red', font=font)
+        bbox = (x , y, (x + w), (y + h)) 
+        draw1.rectangle(bbox, outline='red')
+        draw1.text(((x)  + 3, y ), 'R' if r > t else 'T', 'red', font=font)
     image.save('real.jpg', 'JPEG', quality=100, subsampling=0)
